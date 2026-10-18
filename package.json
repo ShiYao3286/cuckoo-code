@@ -77,7 +77,7 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "wangyongpeng90",
+        "owner": "ShiYao3286",
         "repo": "cuckoo-code"
       }
     ],
