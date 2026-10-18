@@ -105,10 +105,44 @@ test('buildPrompt 替换核心占位符', () => {
     assert.ok(!p.includes('{{MCP_SECTION}}'));
     assert.ok(!p.includes('{{TOOL_API_TYPES}}'));
     assert.ok(!p.includes('{{PROJECT_INTRO_SECTION}}'));
+    assert.ok(!p.includes('{{WORK_DISCIPLINE_SECTION}}'), '工作纪律占位符应被替换');
     // 项目目录被写入
     assert.ok(p.includes(tmp));
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('buildPrompt 注入「工作纪律」章节内容（单一真相源 discipline.md）', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cuckoo-pb-'));
+  try {
+    const r = pb.buildPrompt({ providerId: 'deepseek', selectedDir: tmp });
+    assert.ok(!r.error, r.error);
+    const p = r.prompt;
+    assert.ok(p.includes('## 工作纪律'), '模板应保留工作纪律小标题');
+    assert.ok(p.includes('状态以现场为准'), '纪律正文应被注入');
+    assert.ok(p.includes('goalBlocked'), '纪律应包含目标受阻语义');
+    // 纪律正文只出现一次（防止被重复拼接）
+    assert.strictEqual(p.split('状态以现场为准').length - 1, 1);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('四个平台模板都含工作纪律占位符（不分叉）', () => {
+  for (const id of ['deepseek', 'claude', 'chatgpt', 'default']) {
+    const r = pb.loadTemplate(id);
+    assert.ok(r.content.includes('{{WORK_DISCIPLINE_SECTION}}'), id + '.md 缺少工作纪律占位符');
+  }
+});
+
+test('模板不再自相矛盾：不命令"代码块外绝对无文字"，也不引用不存在的 systemPrompt.md', () => {
+  for (const id of ['deepseek', 'claude', 'chatgpt', 'default']) {
+    const r = pb.loadTemplate(id);
+    assert.ok(!r.content.includes('见 systemPrompt.md'), id + '.md 仍引用模型看不到的 systemPrompt.md');
+    assert.ok(!r.content.includes('代码块外不要有任何文字'), id + '.md 仍有绝对化的"代码块外不要有任何文字"');
+    assert.ok(!r.content.includes('不要在代码块外输出任何自然语言'), id + '.md 仍有与 goalDone 冲突的禁忌');
+    assert.ok(!r.content.includes('其他内容不需要回复'), id + '.md 仍以"其他内容不需要回复"压制正文');
   }
 });
 

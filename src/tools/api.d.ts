@@ -367,3 +367,14 @@ declare function mcpGetTools(serverName: string): Promise<string>;
  * @throws 缺少窗口上下文、窗口已关闭或纯净对话模式未开启时抛出异常
  */
 declare function goalDone(): Promise<string>;
+
+/**
+ * 宣告当前目标（/goal 设定的自动多轮任务）被阻塞，暂停自动推进并等待用户处理。
+ * reason 要写清"需要什么才能继续"（凭据、决策、缺失文件、外部服务…），用户据此决定下一步。
+ * 只在阻碍**确实无法靠自己绕过**时调用：还没做完、有点难、不太确定都不算阻塞——继续推进或直接提问。
+ * 非目标模式的普通对话不需要调用本工具。
+ * @param reason 阻塞原因与所需条件（一句话，面向用户，如"需要目标机器的 SSH 凭据才能继续"）
+ * @returns 确认消息
+ * @throws 缺少窗口上下文、窗口已关闭、原因为空或纯净对话模式未开启时抛出异常
+ */
+declare function goalBlocked(reason: string): Promise<string>;

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Cuckoo Code 主进程入口（多窗口多 profile 版）
  * 由项目根目录 main.js 薄壳加载。
  */
@@ -58,7 +58,8 @@ import { initFeishu } from './ipc/feishu.js';
 import { injectSubagentDeps, runAgent as runAgentImpl } from './subagent.js';
 import { injectAgentRunner, injectSubagentChecker } from '../tools/impl/run-agent.js';
 import { injectGoalDonePusher } from '../tools/impl/goal-done.js';
-import { isSubagentWindow, pushGoalDone } from './goal.js';
+import { injectGoalBlockedPusher } from '../tools/impl/goal-blocked.js';
+import { isSubagentWindow, pushGoalDone, pushGoalBlocked } from './goal.js';
 import { injectSessionTitleSetter } from '../tools/impl/name-conversation.js';
 import { injectMemoryStore } from '../tools/impl/remember.js';
 import { addMemory, removeMemory, listMemories } from '../infra/memories.js';
@@ -808,6 +809,8 @@ injectAgentRunner(async ({ agent, task, currentWindowId }: any) => {
 injectSubagentChecker(isSubagentWindow);
 // 给 goalDone 工具注入"推送目标完成事件"实现（tools 层不依赖 app）
 injectGoalDonePusher(pushGoalDone);
+// 给 goalBlocked 工具注入"推送目标受阻事件"实现（同上）
+injectGoalBlockedPusher(pushGoalBlocked);
 // 给 nameConversation 工具注入"设置当前会话标题"实现
 injectSessionTitleSetter(async ({ windowId, title }: any) => {
   const ctx = windowState.getWindowContext(windowId);

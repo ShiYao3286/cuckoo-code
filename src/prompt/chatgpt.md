@@ -80,6 +80,9 @@
    注意：脚本内长时间 sleep 不经过工具桥接、不会续命，容易触发超时——耗时的等待应通过工具进行（如 bash/pwsh 命令的等待），而非脚本内 sleep 很久。
    耗时长的任务（如启动服务、等构建）仍建议**拆分**：先用一段脚本"后台启动"（应立即返回），再用另一段脚本"轮询状态/读日志"。
 
+### 工作纪律
+{{WORK_DISCIPLINE_SECTION}}
+
 ### 调用格式
 
 ```cuckoo
@@ -90,6 +93,7 @@ await write("src/utils/helper.js", content.replace("formatDate", "formatTime"));
 ### 输出前自查清单
 
 1. 代码块以 ```cuckoo 开头、以 ``` 结尾
+2. 纯执行工具时代码块外不留文字；要向用户交代结果或提问时，正文写在代码块之前（cuckoo 块照样会被识别执行，正文不会干扰）
 3. 每个工具函数调用前都写 await
 4. 多行文本一律使用反引号（`）模板字符串，直接换行，不做 \n 转义
 5. 不要输出 JSON、不要使用 JSON.stringify、不要转义引号
@@ -99,7 +103,7 @@ await write("src/utils/helper.js", content.replace("formatDate", "formatTime"));
 ### 可用工具函数
 
 > 每个工具函数都是异步的，必须用 await 调用。log() 用于输出中间结果，脚本最后的 return 值也会作为结果返回。
-> 完整的类型声明（每个函数的参数、返回值、抛错行为）见 systemPrompt.md 末尾的「工具 API 类型定义（TypeScript）」。
+> 完整的类型声明（每个函数的参数、返回值、抛错行为）见本提示词上文「工具 API 类型定义（TypeScript）」章节。
 
 ### 读取文件内容
 

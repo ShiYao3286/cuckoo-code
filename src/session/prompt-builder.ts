@@ -70,6 +70,22 @@ function loadTemplate(providerId: string): { content: string; path: string; erro
   return { content: templateContent, path: templatePath };
 }
 
+/**
+ * 读取「工作纪律」章节（src/prompt/discipline.md）。
+ * 单一真相源：四个平台模板共用同一份纪律，避免各改各的分叉。
+ * 文件缺失时返回空串（模板里的占位符被替换为空，不影响其余章节）。
+ */
+function readWorkDiscipline(): string {
+  const p = path.join(PROMPT_DIR, 'discipline.md');
+  try {
+    if (!fs.existsSync(p)) return '';
+    return fs.readFileSync(p, 'utf-8').replace(/\r\n/g, '\n').replace(/\s+$/, '');
+  } catch (err: any) {
+    console.warn('[Cuckoo Code] 读取工作纪律失败:', err && err.message);
+    return '';
+  }
+}
+
 /** 生成平台信息章节（OS/arch/命令差异） */
 function buildPlatformInfo(): string {
   const platform = process.platform;
@@ -207,6 +223,7 @@ function buildPrompt(opts: { providerId: string; selectedDir: string; isCompacti
     '{{TOOL_API_TYPES}}': toolApiTypes,
     '{{TOOLS_LIST}}': toolsDescription,
     '{{TOOL_SECTIONS}}': promptSections,
+    '{{WORK_DISCIPLINE_SECTION}}': readWorkDiscipline(),
     '{{PLATFORM_INFO}}': platformInfo,
     '{{PROJECT_DIR}}': selectedDir,
     '{{PROJECT_INTRO_SECTION}}': projectIntroSection,
