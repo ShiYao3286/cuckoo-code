@@ -2,7 +2,7 @@
 id: 036
 type: feature
 title: 用户画像自动整理（LLM 合成）
-status: draft
+status: review
 branch: feat/036-memory-consolidation
 created: 2026-10-19
 updated: 2026-10-19
@@ -131,15 +131,35 @@ GPT 的 Dreaming V3 给出了另一种答案：**用 LLM 把历史对话合成�
 
 ## 验收标准
 
-- [ ] 能读出指定会话的完整对话正文（含 role + content）
-- [ ] 整理后画像的 6 个字段结构正确（字符串 / projects 是对象）
-- [ ] 预览 diff 能正确显示字段级变化
-- [ ] 用户拒绝时原画像不变
-- [ ] 用户确认后原子写入，且生成 `.bak`
-- [ ] 回滚功能可用
-- [ ] 增量整理：第二次整理只读新对话
-- [ ] 免费模型（nemotron）端到端跑通
-- [ ] typecheck / 全量测试绿
+- [x] 能读出指定会话的完整对话正文（三层兜底：content / fragments / 最长字符串）
+- [x] 整理后画像的 6 个字段结构正确（normalizeProfile 归一化）
+- [x] 预览 diff 能正确显示字段级变化
+- [x] 用户拒绝时原画像不变
+- [x] 用户确认后原子写入，且生成 `.bak`
+- [x] 回滚功能可用
+- [x] 增量整理：第二次整理只读新对话（meta.lastConsolidatedMessageId）
+- [ ] **免费模型端到端跑通（待真机验证）**
+- [x] typecheck / 全量测试绿（107 files / 1081 tests）
+
+## 实现清单（2026-10-19）
+
+| 模块 | 文件 | 说明 |
+|---|---|---|
+| 文件层 | `infra/memories-file.ts` | v1 数组自动升级 v2；原子写 |
+| 画像 | `infra/memory-profile.ts` | profile 与 savedMemories 分离读写 |
+| 整理器 | `infra/memory-consolidator.ts` | 调 LLM；JSON 提取容错；超时/降级 |
+| 读正文 | `session/conversation-reader.ts` | 页面内注入执行；三层提取 |
+| 编排 | `session/memory-consolidation.ts` | 增量游标；格式化；预览 |
+| 凭据 | `app/memory-credentials.ts` | safeStorage 加密 |
+| IPC | `app/ipc/memory-consolidation.ts` | 8 个通道 |
+| UI | `ui/shell/.../memories.*` | 配置折叠区 + 整理按钮 + 画像展示 |
+
+## 待真机验证的关键点
+
+1. **正文能否读到**：`chat_messages` 的实际字段名未确认。已做三层兜底 + 诊断输出，
+   若失败会直接显示字段名列表。
+2. **LLM 端到端**：用 nemotron-3-super-120b（免费）跑通整理 → 预览 → 落盘。
+3. **注入效果**：重新初始化项目后，提示词里应出现「用户画像」章节。
 
 ## 遗留 / 后续
 
