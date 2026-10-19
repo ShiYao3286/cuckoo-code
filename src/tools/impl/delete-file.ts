@@ -1,7 +1,9 @@
 import { Tool } from '../core/Tool.js';
 import type { ToolApiMeta } from '../core/Tool.js';
-import { ToolResult } from '../core/ToolResult.js';
+import { ToolResult, ToolErrorCode } from '../core/ToolResult.js';
 import { isProtectedPath } from '../../infra/protected-paths.js';
+import { getObservation } from '../runtime/fs-observation.js';
+import { isFsGuardEnabled } from '../../infra/config.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -59,8 +61,9 @@ class DeleteFileTool extends Tool {
 
   async execute(params: any): Promise<ToolResult> {
     const { filePath, projectDir } = params;
+    const sessionId = params && params.sessionId;
     if (!filePath) {
-      return ToolResult.error('缺少参数 filePath');
+      return ToolResult.error('缺少参数 filePath', ToolErrorCode.INVALID_ARGS);
     }
 
     // 解析绝对路径
@@ -73,7 +76,7 @@ class DeleteFileTool extends Tool {
 
     // 受保护路径检查（禁止删除快照/记忆数据）
     const guard = isProtectedPath(absolutePath);
-    if (guard) return ToolResult.error('删除失败: 目标路径受保护 — ' + guard);
+    if (guard) return ToolResult.error('删除失败: 目标路径受保护 — ' + guard, ToolErrorCode.PROTECTED_PATH);
 
     try {
       // 检查文件是否存在
@@ -81,8 +84,21 @@ class DeleteFileTool extends Tool {
       // 检查是否为文件（不是目录）
       const stat = await fs.promises.stat(absolutePath);
       if (!stat.isFile()) {
-        return ToolResult.error(`路径不是文件: ${absolutePath}`);
+        return ToolResult.error(`路径不是文件: ${absolutePath}`, ToolErrorCode.INVALID_ARGS);
       }
+
+      // ===== 删除护栏：本会话从未读过该文件 → 拒绝 =====
+      // 删除是整个工具集里唯一**不可逆**的操作（edit 写错还能再改）。
+      // 要求"读过才删"，避免模型凭路径相似度或记忆误删。
+      if (isFsGuardEnabled() && !getObservation(sessionId, absolutePath)) {
+        return ToolResult.error(
+          '删除被拒绝: 本会话尚未读过该文件，删除不可恢复。文件路径: ' + absolutePath
+            + '\n下一步: 先 read("' + filePath + '") 确认它确实是要删的内容；'
+            + '若只是想清空内容，可用 write 覆盖为空串。',
+          ToolErrorCode.NOT_OBSERVED
+        );
+      }
+
       // 删除文件
       await fs.promises.unlink(absolutePath);
       return ToolResult.success({ message: `文件已删除: ${absolutePath}`, path: absolutePath });

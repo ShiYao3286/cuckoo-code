@@ -35,5 +35,6 @@
 | 029 | feature | [Agent 工作纪律提示词 + goal 受阻/防重复（DSH 经验移植）](./029-agent-discipline-prompts.md) | doing | feat/029-agent-discipline-prompts | 2026-10-19 |
 | 030 | feature | [read-before-edit 护栏 + 工具错误码 + 纪律改造（移植 DSH 机制）](./030-fs-observation-guard.md) | doing | feat/030-fs-observation-guard | 2026-10-19 |
 | 031 | feature | [Windows 绿色版（zip 解压即用）](./031-portable-win-zip.md) | review | feat/031-portable-win-zip | 2026-10-19 |
+| 032 | fix | [护栏加固（write 版本比对 / 内容指纹 / 删除护栏 / 长输出落盘 / config 缓存）](./032-guard-hardening.md) | review | fix/032-guard-hardening | 2026-10-19 |
 
-共 30 个需求。
+共 31 个需求。

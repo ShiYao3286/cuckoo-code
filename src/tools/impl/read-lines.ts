@@ -1,7 +1,7 @@
 import { Tool } from '../core/Tool.js';
 import type { ToolApiMeta } from '../core/Tool.js';
 import { ToolResult } from '../core/ToolResult.js';
-import { observe } from '../runtime/fs-observation.js';
+import { observe, statVersion } from '../runtime/fs-observation.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { READ_LIMIT, parseReadArgs, buildWindow } from './read.js';
@@ -120,7 +120,9 @@ class ReadLinesTool extends Tool {
       }, filePath);
 
       // 记录权威观察：readLines 与 read 等价，都要为后续 edit 解锁（否则误拦）
-      observe(params && params.sessionId, resolvedPath, Math.round(stat.mtimeMs) + ':' + stat.size + ':' + stat.ino);
+      // 版本串统一走 statVersion（含内容指纹），不要手拼
+      const observedVersion = statVersion(resolvedPath);
+      if (observedVersion) observe(params && params.sessionId, resolvedPath, observedVersion);
 
       console.log('[ReadLinesTool] 已读取:', resolvedPath, 'offset=' + input.offset, 'limit=' + input.limit, 'totalLines=' + window.totalLines);
 

@@ -1,7 +1,7 @@
 import { Tool } from '../core/Tool.js';
 import type { ToolApiMeta } from '../core/Tool.js';
 import { ToolResult } from '../core/ToolResult.js';
-import { observe } from '../runtime/fs-observation.js';
+import { observe, statVersion } from '../runtime/fs-observation.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -233,7 +233,10 @@ class ReadTool extends Tool {
       const window = buildWindow(content, request, filePath);
 
       // 记录权威观察：本会话此后 edit/write 该文件才被视为"读过"
-      observe(params && params.sessionId, resolvedPath, Math.round(stat.mtimeMs) + ':' + stat.size + ':' + stat.ino);
+      // 版本串必须走 statVersion（含内容指纹）——不要在这里手拼，
+      // 格式一旦与 statVersion 漂移，护栏会永久误判 STALE_VERSION。
+      const observedVersion = statVersion(resolvedPath);
+      if (observedVersion) observe(params && params.sessionId, resolvedPath, observedVersion);
 
       console.log('[ReadTool] 已读取:', resolvedPath, 'offset=' + input.offset, 'limit=' + input.limit, 'totalLines=' + window.totalLines);
       return ToolResult.success(formatReadOutput(filePath, { ...window, offset: input.offset }));

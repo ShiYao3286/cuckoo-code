@@ -17,6 +17,7 @@ import { scanRules, getScopedRules, getInjectedSet, markInjected } from '../../r
 import { getPluginScanRoots } from '../../plugins/roots.js';
 import { matchRulesForPath } from '../../rules/matcher.js';
 import { renderRuleFull, renderRulePointer } from '../../rules/prompt.js';
+import { buildTruncatedOutput } from './spill.js';
 
 // 同步执行超时（vm timeout，覆盖无 await 的死循环）
 const SYNC_TIMEOUT = 30 * 1000;
@@ -323,7 +324,8 @@ class JsRunner {
       }
 
       if (output.length > OUTPUT_LIMIT) {
-        output = output.slice(0, OUTPUT_LIMIT) + '\n...[输出过长已截断]...';
+        // 先落盘再截断：模型拿到的不是"被砍掉一半的文本"，而是首尾 + 可精读的完整文件路径
+        output = buildTruncatedOutput(output, OUTPUT_LIMIT, settings && settings.sessionId);
       }
 
       // 开发版：记录本次脚本里所有工具级失败（无工具失败则不写）

@@ -36,6 +36,8 @@ afterEach(() => {
 test('DeleteFileTool 删除文件', async () => {
   const f = path.join(tmpRoot, 'a.txt');
   fs.writeFileSync(f, 'x');
+  // 删除护栏（032）要求先观察过该文件
+  await new ReadTool().execute({ filePath: 'a.txt', projectDir: tmpRoot });
   const tool = new DeleteFileTool();
   const r = await tool.execute({ filePath: 'a.txt', projectDir: tmpRoot });
   assert.strictEqual(r.success, true);

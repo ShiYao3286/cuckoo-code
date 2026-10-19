@@ -121,11 +121,16 @@ class WriteTool extends Tool {
 
       // ===== write 护栏（移植 DSH fs-observation-policy 语义）=====
       // 只拦"覆盖一个已存在、本会话从没读过的文件"——新建不受影响。
+      // 与 edit 一致：观察到版本不同也拒绝，避免"读过之后被改过仍整份覆盖"。
       if (isFsGuardEnabled()) {
-        const d = guardWrite(sessionId, resolvedPath, input.filePath, exists);
+        const currentVersion = exists ? statVersion(resolvedPath) : null;
+        const d = guardWrite(sessionId, resolvedPath, input.filePath, exists, currentVersion);
         if (!d.ok) {
           return ToolResult.error(
-            '写入被拒绝: 该文件已存在，但本会话尚未读过它，整份覆盖有风险。文件路径: ' + resolvedPath + '\n下一步: ' + d.hint,
+            '写入被拒绝: ' + (d.code === 'STALE_VERSION'
+              ? '文件在你上次读取后已被改动。'
+              : '该文件已存在，但本会话尚未读过它，整份覆盖有风险。')
+              + '文件路径: ' + resolvedPath + '\n下一步: ' + d.hint,
             d.code
           );
         }

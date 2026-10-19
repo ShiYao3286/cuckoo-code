@@ -16,6 +16,7 @@
  * 同毫秒内的等长原地修改会被漏判，但那不是本护栏的目标场景。
  */
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 
 /** 一次权威观察：文件在那一刻的版本 */
 interface Observation {
@@ -25,15 +26,51 @@ interface Observation {
   at: number;
 }
 
+/** 内容指纹取样长度：取首尾各 4KB 拼 size，覆盖绝大多数"等长原地改写" */
+const FINGERPRINT_BYTES = 4096;
+
 /**
- * 计算文件的版本代理串（mtimeMs + size + inode）。
+ * 计算内容指纹（首 4KB + 尾 4KB + size 的 sha1 前 12 位）。
+ * 为什么不能只用 mtime：实测同一毫秒内、等长的内容替换，mtime/size/ino 三者完全不变
+ * （`AAAA` → `BBBB`，4 字节 → 4 字节），只靠 stat 会漏判。
+ * 只读首尾是权衡：护栏目标是挡住"外部改动后仍按旧内容写"，不需要密码学强度，
+ * 也不必为一个 50MB 的文件算全量哈希。
+ */
+function contentFingerprint(absPath: string, size: number): string {
+  try {
+    const len = Math.min(FINGERPRINT_BYTES, size);
+    const parts: Buffer[] = [];
+    if (len > 0) {
+      const head = Buffer.alloc(len);
+      const fd = fs.openSync(absPath, 'r');
+      fs.readSync(fd, head, 0, len, 0);
+      parts.push(head);
+      const tailStart = Math.max(0, size - FINGERPRINT_BYTES);
+      if (tailStart >= len) {
+        const tail = Buffer.alloc(size - tailStart);
+        fs.readSync(fd, tail, 0, size - tailStart, tailStart);
+        parts.push(tail);
+      }
+      fs.closeSync(fd);
+    }
+    return crypto.createHash('sha1').update(Buffer.concat(parts)).digest('hex').slice(0, 12);
+  } catch (_) {
+    // 读不到内容时降级为仅 stat（宁可少判一次陈旧，也不要让工具整体不可用）
+    return '';
+  }
+}
+
+/**
+ * 计算文件的版本代理串。
+ * 组成：`mtimeMs:size:ino:指纹`。指纹为空时退化为仅 stat。
  * 文件不存在/不可 stat 时返回 null，调用方据此判定"不存在"。
  */
 function statVersion(absPath: string): string | null {
   try {
     const st = fs.statSync(absPath);
     if (!st.isFile()) return null;
-    return Math.round(st.mtimeMs) + ':' + st.size + ':' + st.ino;
+    const fp = contentFingerprint(absPath, st.size);
+    return Math.round(st.mtimeMs) + ':' + st.size + ':' + st.ino + ':' + fp;
   } catch (_) {
     return null;
   }
@@ -126,8 +163,18 @@ function guardEdit(sessionId: any, absPath: string, displayPath: string, current
 /**
  * write 护栏：目标已存在但从未观察 → 拒绝（防盲覆盖整份文件）。
  * 目标不存在（新建）时放行。
+ *
+ * 与 edit 的一致性：观察到版本不同同样拒绝（STALE_VERSION）。
+ * 否则会出现漏网场景——read 过之后文件被 bash/用户改掉，edit 会拦、write 却整份覆盖。
+ * @param currentVersion 目标文件当前版本（不存在时传 null）
  */
-function guardWrite(sessionId: any, absPath: string, displayPath: string, exists: boolean): GuardDecision {
+function guardWrite(
+  sessionId: any,
+  absPath: string,
+  displayPath: string,
+  exists: boolean,
+  currentVersion: string | null = null
+): GuardDecision {
   if (!exists) return { ok: true };
   const prior = getObservation(sessionId, absPath);
   if (!prior) {
@@ -136,6 +183,14 @@ function guardWrite(sessionId: any, absPath: string, displayPath: string, exists
       code: 'NOT_OBSERVED',
       hint: '该文件已存在但本会话从未读过它。write 会整份覆盖——先 read("' + displayPath +
         '") 确认内容，或改用 edit 做局部替换。',
+    };
+  }
+  if (currentVersion && prior.version !== currentVersion) {
+    return {
+      ok: false,
+      code: 'STALE_VERSION',
+      hint: '你上次读它之后文件已经变了（可能被命令、用户或你自己改过）。' +
+        '重新 read("' + displayPath + '") 确认当前内容后再决定是否整份覆盖。',
     };
   }
   return { ok: true };
