@@ -44,7 +44,20 @@ function extractBody(fn) {
   return lines.map((l) => '  ' + l.slice(minIndent)).join(NL);
 }
 
-function render(metas, minimal) {
+/**
+ * 生成契约文本。
+ *
+ * T3 分层瘦身：提示词每轮重发 api.d.ts，而其中 76% 是 JSDoc 正文（实测 10358 字符里 7937 是注释），
+ * 函数签名只占 1803。瘦身策略——**函数 JSDoc 只保留首行摘要 + @throws**：
+ *  - 参数名与类型已在 `declare function` 签名里；
+ *  - 参数语义在 `{{TOOLS_LIST}}`（一行速览）与 `{{TOOL_SECTIONS}}`（用法）里已有兜底；
+ *  - @throws 保留：错误行为是模型写 try/catch 与分流的关键，且不在别处重复。
+ * `types` 块（interface/type 定义，含字段注释）**原样保留**——那是类型本身。
+ *
+ * @param {boolean} minimal true 时生成 feature 分组文件（无顶部总说明）
+ * @param {boolean} compact 是否瘦身 JSDoc，默认 true
+ */
+function render(metas, minimal, compact = true) {
   const L = [];
   if (!minimal) {
   L.push('/**');
@@ -100,19 +113,27 @@ function render(metas, minimal) {
       L.push('');
     }
     L.push('/**');
-    for (const line of m.doc.split(NL)) {
-      L.push(' * ' + line);
-    }
-    if (m.paramDocs) {
-      for (const k of Object.keys(m.paramDocs)) {
-        L.push(' * @param ' + k + ' ' + m.paramDocs[k]);
+    if (compact) {
+      // 瘦身模式：只留首行摘要 + @throws（见 render 顶部注释）
+      L.push(' * ' + m.doc.split(NL)[0]);
+      if (m.throws) {
+        L.push(' * @throws ' + m.throws);
       }
-    }
-    if (m.returnsDoc) {
-      L.push(' * @returns ' + m.returnsDoc);
-    }
-    if (m.throws) {
-      L.push(' * @throws ' + m.throws);
+    } else {
+      for (const line of m.doc.split(NL)) {
+        L.push(' * ' + line);
+      }
+      if (m.paramDocs) {
+        for (const k of Object.keys(m.paramDocs)) {
+          L.push(' * @param ' + k + ' ' + m.paramDocs[k]);
+        }
+      }
+      if (m.returnsDoc) {
+        L.push(' * @returns ' + m.returnsDoc);
+      }
+      if (m.throws) {
+        L.push(' * @throws ' + m.throws);
+      }
     }
     L.push(' */');
     L.push('declare function ' + m.name + '(' + m.params + '): ' + m.returns + ';');
