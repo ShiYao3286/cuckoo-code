@@ -45,6 +45,8 @@ export const apiMetas: ToolApiMeta[] = [
 const READ_LIMIT = 2000;
 const READ_MAX_LINE_LENGTH = 2000;
 const READ_MAX_BYTES = 50 * 1024;
+// 流式读块大小（T4）：只影响内存占用，不影响输出
+const READ_CHUNK_BYTES = 64 * 1024;
 
 /**
  * 校验并归一化 read 参数。
@@ -121,6 +123,85 @@ function buildWindow(text: string, request: WindowRequest, displayPath: string):
     }
     acc.outputBytes += bytes;
     acc.lines.push({ number: acc.totalLines, text: text2 });
+  }
+
+  if (!acc.truncatedByBytes && request.offset > acc.totalLines && !(acc.totalLines === 0 && request.offset === 1)) {
+    throw new Error('offset ' + request.offset + ' is out of range for "' + displayPath + '" (' + acc.totalLines + ' lines)');
+  }
+
+  return {
+    lines: acc.lines,
+    totalLines: acc.totalLines,
+    truncatedByBytes: acc.truncatedByBytes,
+  };
+}
+
+/**
+ * 流式读取文件并构建窗口（T4）。
+ *
+ * 为什么不能只读窗口区间：回传的 footer 要显示 `of N lines`，需要**精确总行数**。
+ * 所以仍然要扫完全文，但不再把整份文件读成一个大字符串——
+ * 按块读、逐行计数，只为窗口内的行构造字符串，内存占用从 O(文件大小) 降到 O(块 + 窗口)。
+ *
+ * 语义与 `buildWindow(fs.readFileSync(path, 'utf-8'))` **逐字节等价**（含这些边界）：
+ *  - 空文件 → 1 行（与 `''.split(/\r?\n/)` = `['']` 一致）
+ *  - 文件以换行结尾 → 末尾多一个空行（与 split 一致）
+ *  - CRLF → 行尾 \r 去掉（与 stripCarriageReturn 一致）
+ *  - UTF-8 多字节字符不会被块边界切断：\n(0x0A) 不会出现在多字节序列内部
+ *
+ * @throws 文件读取失败或 offset 越界
+ */
+function readFileWindow(absPath: string, request: WindowRequest, displayPath: string): WindowResult {
+  const acc = { lines: [] as WindowLine[], totalLines: 0, outputBytes: 0, truncatedByBytes: false };
+  const fd = fs.openSync(absPath, 'r');
+  try {
+    const chunkBuf = Buffer.alloc(READ_CHUNK_BYTES);
+    let pending: Buffer = Buffer.alloc(0);
+    let sawAnyByte = false;
+    let lastByteWasNewline = false;
+
+    /** 收一行（buf 不含换行符） */
+    const emit = (lineBuf: Buffer): void => {
+      acc.totalLines += 1;
+      if (acc.truncatedByBytes || acc.totalLines < request.offset || acc.lines.length >= request.limit) return;
+      const lineText = stripCarriageReturn(lineBuf.toString('utf-8'));
+      const text = truncateLine(lineText, request.maxLineLength);
+      const bytes = lineByteSize(text, acc.lines.length);
+      if (acc.outputBytes + bytes > request.maxBytes) {
+        acc.truncatedByBytes = true;
+        return;
+      }
+      acc.outputBytes += bytes;
+      acc.lines.push({ number: acc.totalLines, text });
+    };
+
+    while (true) {
+      const n = fs.readSync(fd, chunkBuf, 0, chunkBuf.length, null);
+      if (n === 0) break;
+      sawAnyByte = true;
+      const chunk = n === chunkBuf.length ? chunkBuf : chunkBuf.subarray(0, n);
+      const combined = pending.length > 0 ? Buffer.concat([pending, chunk]) : chunk;
+      let start = 0;
+      let idx: number;
+      while ((idx = combined.indexOf(0x0a, start)) !== -1) {
+        emit(combined.subarray(start, idx));
+        start = idx + 1;
+      }
+      // 未完成的行必须复制：combined 可能引用 chunkBuf，下次 readSync 会覆盖
+      pending = start < combined.length ? Buffer.from(combined.subarray(start)) : Buffer.alloc(0);
+      lastByteWasNewline = combined[combined.length - 1] === 0x0a;
+    }
+
+    // 收尾（三种互斥情形，覆盖 split 语义）
+    if (!sawAnyByte) {
+      emit(Buffer.alloc(0)); // 空文件 = 1 个空行
+    } else if (pending.length > 0) {
+      emit(pending); // 末尾无换行的最后一行
+    } else if (lastByteWasNewline) {
+      emit(Buffer.alloc(0)); // 文件以换行结尾 → 尾部空行
+    }
+  } finally {
+    fs.closeSync(fd);
   }
 
   if (!acc.truncatedByBytes && request.offset > acc.totalLines && !(acc.totalLines === 0 && request.offset === 1)) {
@@ -222,15 +303,14 @@ class ReadTool extends Tool {
         return ToolResult.error('不是文件: ' + resolvedPath);
       }
 
-      // 读取整个文件内容（当前实现与 dsh 流式不同，但保证 totalLines 精确）
-      const content = fs.readFileSync(resolvedPath, 'utf-8');
+      // 流式扫描（T4）：不再把整份文件读成字符串，内存 O(块+窗口)；totalLines 仍精确
       const request: WindowRequest = {
         offset: input.offset,
         limit: input.limit,
         maxLineLength: READ_MAX_LINE_LENGTH,
         maxBytes: READ_MAX_BYTES,
       };
-      const window = buildWindow(content, request, filePath);
+      const window = readFileWindow(resolvedPath, request, filePath);
 
       // 记录权威观察：本会话此后 edit/write 该文件才被视为"读过"
       // 版本串必须走 statVersion（含内容指纹）——不要在这里手拼，
@@ -261,4 +341,4 @@ export function bootstrap(__call: any): void {
   };
 }
 
-export { ReadTool, READ_LIMIT, READ_MAX_LINE_LENGTH, READ_MAX_BYTES, parseReadArgs, buildWindow, formatReadOutput };
+export { ReadTool, READ_LIMIT, READ_MAX_LINE_LENGTH, READ_MAX_BYTES, READ_CHUNK_BYTES, parseReadArgs, buildWindow, readFileWindow, formatReadOutput };

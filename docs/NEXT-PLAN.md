@@ -77,30 +77,49 @@
 
 ## P1 · 技术项（验证通过后再动，按价值排序）
 
-- [ ] **T1 · 插件系统三个 bug**（我实测 DSH 工具时发现，与护栏无关，不干扰验证）
+- [x] **T1 · 插件系统三个 bug** ✅ 已完成（2026-10-19）
   - 位置：`src/plugins/cuckoo-plugins/loader.ts`、`src/plugins/dsh-compat/fs-service.ts`、`src/tools/core/ToolRegistry.ts`
   - 问题 1：`loader.ts:251` 传 `plugin.apply(ctx, {})`，未解析插件导出的 `Config` 默认值 → 官方工具包直接抛错
   - 问题 2：简化 `ctx.fs` 缺 `stat` → 依赖文件元信息的 DSH 工具必崩
   - 问题 3：**（安全）** 插件工具与内置工具同名时 `ToolRegistry.register` **静默覆盖** → 装同名插件能把可用工具换成不可用的
-  - 建议：问题 3 改为拒绝注册或自动加前缀；前两个补实现
-  - 工时：约半天
+  - **修复**：
+    - 问题 1：新增 `resolvePluginConfig()`，解析插件导出的 `Config.parse()` / `config.parse()` 填默认值；parse 抛错时回退 `{}` 不拦插件
+    - 问题 2：`ctx.fs` 补 `stat()`（type/size/mtimeMs/mtime/isFile/isDirectory/path/key）与 `exists()`
+    - 问题 3：`ToolRegistry.register` 默认**拒绝**同名覆盖（抛错），确需覆盖须显式 `allowOverride: true`；插件加载处逐工具 try/catch，冲突的跳过并警告，不影响同插件其他工具
+  - 测试：新增 4 个（Config 默认值、Config 抛错回退、同名冲突跳过、ToolRegistry 拒绝/允许覆盖）。全量 98 files / 989 tests 全绿，typecheck 绿
 
-- [ ] **T2 · 每轮纪律注入的通用通道**
+- [x] **T2 · 每轮纪律注入的通用通道** ✅ 已完成（2026-10-19）
   - 现状：`JsRunner` 已有"拼在输出开头"的通道，但只服务规则注入；重复提醒是第二个特例
   - 目标：抽象成通用机制，让纪律从"开场白里的一次性文本"变成"每轮可见"
   - 风险：通道内容过多会挤占上下文，需要节制
-  - 工时：约 1 天
+  - **落地**：新增 `src/tools/runtime/injections.ts` 的 `prependInjections(output, blocks)`——
+    顺序显式（按数组顺序，不再靠 prepend 巧合）、完全相同的块去重、**单块 1500 / 合计 3000 字符预算**（超限按块截断并显式标注）。
+    JsRunner 里两处特例（重复提醒、规则注入）改为走这个通道。
+  - **刻意没做**：每轮注入整份 `discipline.md`（约 2KB）。错误码本身已带下一步指令，
+    真正需要每轮可见的是"这次为什么被拦 + 该怎么改"，那是工具结果与错误码的职责；整份注入会挤占上下文、让长会话更早压缩。
+  - 测试：新增 6 个（顺序/空块/去重/单块截断/总预算/空输出）。全量 99 files / 995 tests 全绿，typecheck 绿
 
-- [ ] **T3 · system prompt 瘦身**
+- [x] **T3 · system prompt 瘦身** ✅ 已完成（2026-10-19）
   - 现状：组装后约 16KB，其中 **66% 是 10.5KB 的 `api.d.ts`**，每轮重发
-  - 方案：改成短索引 + 指向 `resources/tools/cuckoo-tools.d.ts` 的 `read`（DSH 的按需披露思路）
-  - 收益：省上下文，长会话更晚触发压缩
-  - 工时：半天
+  - **实测细分**：`api.d.ts` 共 10358 字符 = JSDoc 7937（**76.6%**）+ 函数签名 1803 + 类型定义/其他 618
+  - **落地方式**：改用「分层瘦身」而非「短索引 + read」——后者每轮多一次网页往返（真金白银的额度），分层瘦身零成本。
+    `scripts/build-tool-api.mjs` 的 `render()` 加 `compact` 参数（默认 true）：函数 JSDoc 只保留**首行摘要 + @throws**，
+    `types` 块（interface/type 定义及字段注释）**原样保留**。
+    依据：参数名与类型在签名里已有；参数语义在 `{{TOOLS_LIST}}` 与 `{{TOOL_SECTIONS}}` 兜底；@throws 是错误分流的关键且无处重复。
+  - **收益**：10358 → **6733 字符（-35%）**，每轮省 3625 字符 ≈ 1.8K token
+  - **未做**：backlog 第 7 条提到的「按 tools 过滤（子代理只发自己的工具）」属于子代理场景改造，与本项独立，留待后续
+  - 测试：全量 99 files / 995 tests 全绿（`bootstrap-consistency` 只校验注入函数与注册表一致，不受影响），typecheck 绿
 
-- [ ] **T4 · `read` 不要全量读文件**
+- [x] **T4 · `read` 不要全量读文件** ✅ 已完成（2026-10-19）
   - 现状：`read.ts:225` 先 `readFileSync` 整个文件再切窗口；看前 100 行也要全读
-  - 方案：按 offset/limit 计算字节区间流式读
-  - 工时：半天
+  - **落地方式**：新增 `readFileWindow()`——按 64KB 块流式扫描，逐行计数，只为窗口内行构造字符串。
+    **仍需扫完全文**，因为回传 footer 的 `of N lines` 要求 totalLines 精确（这是与原方案「只读区间」的关键区别：
+    只读区间会让 footer 退化成"不确定还剩多少行"，是信息损失）。
+    净收益是**内存占用从 O(文件大小) 降到 O(块 + 窗口)**。
+  - **等价性保障**：11 个测试以原 `buildWindow` 为基准逐例比对，覆盖空文件 / 末尾换行 / CRLF / 多字节 /
+    跨块边界（行被块切开）/ offset 越界 / 字节上限 / 大文件只取头部（totalLines 仍精确）。
+  - **未做**：保留 `buildWindow` 作为纯函数基准（测试对照 + 小文件路径），不删。
+  - 测试：新增 11 个等价性用例。全量 100 files / 1006 tests 全绿，typecheck 绿
 
 - [ ] **T5 · 台账持久化（可选）**
   - 现状：观察台账是内存态，重启后首次编辑需重新 read
