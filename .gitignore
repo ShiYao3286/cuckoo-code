@@ -67,3 +67,6 @@ coverage/
 custom-providers/
 # Monaco（体积大，不进仓库；由 scripts/copy-monaco.mjs 从 node_modules 复制）
 src/ui/vendor/monaco/
+
+# 浏览器存储探针产物（含真实会话数据，绝不进仓库）
+.idb-probe/

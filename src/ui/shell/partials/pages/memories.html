@@ -15,7 +15,48 @@
                   <span>启用记忆功能（关闭后不注入提示词、不捕获标记、不可调用）</span>
                 </label>
               </div>
-              <p class="ck-about-tip">记忆会随系统提示词发给模型，让 AI 了解你的习惯（跨项目保留）。</p>
+              <p class="ck-about-tip">记忆会随系统提示词发给模型，让 AI 了解你的习惯。<b>全局</b>记忆在所有项目生效；<b>项目</b>记忆只在所属项目生效。</p>
+
+              <!-- ===== 用户画像整理（036）===== -->
+              <div class="ck-mem-consolidate">
+                <div class="ck-mem-consolidate-head">
+                  <span class="ck-mem-consolidate-title">用户画像整理</span>
+                  <button class="ck-btn ck-btn-anim" id="mem-consolidate-btn">从对话生成画像</button>
+                </div>
+                <p class="ck-about-tip" id="mem-consolidate-status">检查中…</p>
+                <div class="ck-mem-profile" id="mem-profile-view" style="display:none"></div>
+
+                <details class="ck-mem-llm-config" id="mem-llm-config">
+                  <summary>LLM 配置（整理功能需要）</summary>
+                  <div class="ck-mem-llm-fields">
+                    <label class="ck-mem-llm-row">
+                      <span>启用整理</span>
+                      <input type="checkbox" id="mem-llm-enabled" />
+                    </label>
+                    <label class="ck-mem-llm-row">
+                      <span>端点（OpenAI 兼容）</span>
+                      <input type="text" id="mem-llm-baseurl" placeholder="https://open.bigmodel.cn/api/paas/v4" />
+                    </label>
+                    <label class="ck-mem-llm-row">
+                      <span>模型</span>
+                      <input type="text" id="mem-llm-model" placeholder="glm-4-plus" />
+                    </label>
+                    <label class="ck-mem-llm-row">
+                      <span>API Key</span>
+                      <input type="password" id="mem-llm-apikey" placeholder="留空则不改动" autocomplete="off" />
+                    </label>
+                    <div class="ck-mem-llm-actions">
+                      <button class="ck-btn ck-btn-anim" id="mem-llm-save">保存配置</button>
+                      <button class="ck-icon-btn" id="mem-llm-clear-key" title="清除已保存的 API Key">清除 Key</button>
+                    </div>
+                    <p class="ck-about-tip" style="margin-top:6px">
+                      Key 用系统加密（Windows DPAPI / macOS Keychain）保存，不写入 config.json。
+                      整理会把对话发给上述端点，请自行确认隐私边界。
+                    </p>
+                  </div>
+                </details>
+              </div>
+
               <div class="ck-list" id="mem-list">
                 <div class="ck-list-empty">加载中…</div>
               </div>

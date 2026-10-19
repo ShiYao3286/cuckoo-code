@@ -7,6 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { readJsonFile } from './json-file.js';
 
 export interface UserConfig {
   /** 是否启用用户记忆功能（默认 false） */
@@ -21,12 +22,27 @@ export interface UserConfig {
    * 0 或负数 = 关闭提醒。
    */
   repeatCallThreshold: number;
+  /**
+   * 记忆整理用的 LLM 端点（036）。空串 = 未配置，整理功能不可用。
+   * OpenAI 兼容格式，如 "https://open.bigmodel.cn/api/paas/v4"。
+   */
+  memoryLlmBaseUrl: string;
+  /** 记忆整理用的模型名，如 "glm-4-plus"。 */
+  memoryLlmModel: string;
+  /**
+   * 是否启用记忆整理（默认 false）。
+   * 需要先配好 memoryLlmBaseUrl + memoryLlmModel + API Key（Key 存 safeStorage，不在此文件）。
+   */
+  memoryConsolidationEnabled: boolean;
 }
 
 const DEFAULT_CONFIG: UserConfig = {
   memoriesEnabled: false,
   fsGuardEnabled: true,
   repeatCallThreshold: 3,
+  memoryLlmBaseUrl: '',
+  memoryLlmModel: '',
+  memoryConsolidationEnabled: false,
 };
 
 /** 用户级目录（可用 CUCKOO_HOME 覆盖，供测试隔离） */
@@ -61,7 +77,8 @@ function readConfig(): UserConfig {
         && configCache.mtimeMs === st.mtimeMs && configCache.size === st.size) {
         return configCache.value;
       }
-      const raw = JSON.parse(fs.readFileSync(file, 'utf-8'));
+      // readJsonFile 会剥掉 UTF-8 BOM（Windows 编辑器常见，否则 JSON.parse 直接失败）
+      const raw = readJsonFile(file);
       if (raw && typeof raw === 'object') {
         const value: UserConfig = {
           memoriesEnabled: raw.memoriesEnabled === true,
@@ -70,6 +87,9 @@ function readConfig(): UserConfig {
           repeatCallThreshold: Number.isFinite(raw.repeatCallThreshold)
             ? Math.round(raw.repeatCallThreshold)
             : DEFAULT_CONFIG.repeatCallThreshold,
+          memoryLlmBaseUrl: typeof raw.memoryLlmBaseUrl === 'string' ? raw.memoryLlmBaseUrl : '',
+          memoryLlmModel: typeof raw.memoryLlmModel === 'string' ? raw.memoryLlmModel : '',
+          memoryConsolidationEnabled: raw.memoryConsolidationEnabled === true,
         };
         configCache = { mtimeMs: st.mtimeMs, size: st.size, file, value };
         return value;
@@ -134,6 +154,25 @@ function setRepeatCallThreshold(n: number): boolean {
 }
 
 /**
+ * 记忆整理是否可用（036）。
+ * 三个条件缺一不可：功能开关打开 + 配了 baseUrl + 配了 model。
+ * API Key 不在 config.json 里（存 safeStorage），由调用方另行检查。
+ */
+function isMemoryConsolidationEnabled(): boolean {
+  const c = readConfig();
+  return c.memoryConsolidationEnabled === true
+    && !!c.memoryLlmBaseUrl
+    && !!c.memoryLlmModel;
+}
+
+/** 取记忆整理的 LLM 配置（未配全时返回 null） */
+function getMemoryLlmConfig(): { baseUrl: string; model: string } | null {
+  const c = readConfig();
+  if (!c.memoryLlmBaseUrl || !c.memoryLlmModel) return null;
+  return { baseUrl: c.memoryLlmBaseUrl, model: c.memoryLlmModel };
+}
+
+/**
  * 已启用的工具功能分组（用于注入对应的 API 契约文件 api.<feature>.d.ts）。
  * 目前仅 'memories'。
  */
@@ -149,4 +188,5 @@ export {
   isFsGuardEnabled, setFsGuardEnabled,
   getRepeatCallThreshold, setRepeatCallThreshold,
   getEnabledToolFeatures, getConfigFile,
+  isMemoryConsolidationEnabled, getMemoryLlmConfig,
 };

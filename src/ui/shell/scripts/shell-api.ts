@@ -49,9 +49,20 @@ export interface ShellAPI {
   setMemoriesEnabled?: (enabled: boolean) => Promise<any>;
   listMemories?: () => Promise<any>;
   saveMemories?: (memories: any[]) => Promise<any>;
-  addMemory?: (text: string) => Promise<any>;
+  addMemory?: (text: string, scope?: string) => Promise<any>;
+  updateMemory?: (id: string, text: string) => Promise<any>;
   deleteMemory?: (id: string) => Promise<any>;
   onMemoriesChanged?: (cb: () => void) => void;
+  // ===== 记忆整理（036）=====
+  memoryConsolidationStatus?: () => Promise<any>;
+  memoryConsolidationPreview?: () => Promise<any>;
+  memoryConsolidationApply?: (payload: any) => Promise<any>;
+  memoryConsolidationRollback?: () => Promise<any>;
+  memoryGetProfile?: () => Promise<any>;
+  memoryClearProfile?: () => Promise<any>;
+  memorySetLlmConfig?: (cfg: any) => Promise<any>;
+  memorySetApiKey?: (key: string) => Promise<any>;
+  memoryClearApiKey?: () => Promise<any>;
   /** 切换纯净对话模式（Harness） */
   toggleHarness?: () => Promise<any>;
   /** 纯净模式状态变化（harness=true 表示已进入纯净模式） */

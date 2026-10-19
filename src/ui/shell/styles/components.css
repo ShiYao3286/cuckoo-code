@@ -229,6 +229,43 @@
   .ck-snip-item:hover + .ck-snip-item { border-top-color: transparent; }
   /* 标题行：名称 + 操作按钮（同高） */
   .ck-snip-top { display: flex; align-items: center; gap: 8px; min-height: 26px; }
+  /* 记忆整理区（036） */
+  .ck-mem-consolidate {
+    margin: 12px 0; padding: 12px; border: 1px solid var(--ck-border); border-radius: 12px;
+  }
+  .ck-mem-consolidate-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+  .ck-mem-consolidate-title { font-size: 13px; font-weight: 600; color: var(--ck-text); }
+  .ck-mem-profile { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--ck-border); }
+  .ck-mem-profile-title { font-size: 11px; color: var(--ck-text-dim); margin-bottom: 6px; }
+  .ck-mem-profile-row { display: flex; gap: 8px; padding: 3px 0; font-size: 12px; line-height: 1.5; }
+  .ck-mem-profile-label { flex-shrink: 0; min-width: 56px; color: var(--ck-text-dim); font-weight: 600; }
+  .ck-mem-profile-value { flex: 1; min-width: 0; color: var(--ck-text); word-break: break-all; }
+  /* LLM 配置折叠区（036） */
+  .ck-mem-llm-config { margin-top: 10px; }
+  .ck-mem-llm-config > summary {
+    cursor: pointer; font-size: 12px; color: var(--ck-text-dim);
+    padding: 6px 0; user-select: none; list-style: none;
+  }
+  .ck-mem-llm-config > summary::-webkit-details-marker { display: none; }
+  .ck-mem-llm-config > summary::before { content: '▸ '; transition: transform .15s; display: inline-block; }
+  .ck-mem-llm-config[open] > summary::before { transform: rotate(90deg); }
+  .ck-mem-llm-fields { padding: 8px 0 0 12px; display: flex; flex-direction: column; gap: 8px; }
+  .ck-mem-llm-row { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+  .ck-mem-llm-row > span { flex-shrink: 0; min-width: 110px; color: var(--ck-text-dim); }
+  .ck-mem-llm-row > input[type="text"],
+  .ck-mem-llm-row > input[type="password"] {
+    flex: 1; min-width: 0; padding: 5px 8px; font-size: 12px;
+    border: 1px solid var(--ck-border); border-radius: 7px;
+    background: var(--ck-surface); color: var(--ck-text);
+  }
+  .ck-mem-llm-actions { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+  /* 记忆作用域徽标（035）：全局 / 项目 */
+  .ck-mem-scope {
+    flex-shrink: 0; font-size: 10px; line-height: 1; padding: 3px 6px;
+    border-radius: 6px; font-weight: 600; letter-spacing: .02em;
+  }
+  .ck-mem-scope-user { color: var(--ck-primary); background: color-mix(in srgb, var(--ck-primary) 14%, transparent); }
+  .ck-mem-scope-project { color: var(--ck-text-dim); background: color-mix(in srgb, var(--ck-text-dim) 14%, transparent); }
   .ck-snip-name { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; color: var(--ck-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ck-snip-preview {
     font-size: 11px; color: var(--ck-text-dim); line-height: 1.5;

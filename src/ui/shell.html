@@ -503,6 +503,43 @@
   .ck-snip-item:hover + .ck-snip-item { border-top-color: transparent; }
   /* 标题行：名称 + 操作按钮（同高） */
   .ck-snip-top { display: flex; align-items: center; gap: 8px; min-height: 26px; }
+  /* 记忆整理区（036） */
+  .ck-mem-consolidate {
+    margin: 12px 0; padding: 12px; border: 1px solid var(--ck-border); border-radius: 12px;
+  }
+  .ck-mem-consolidate-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+  .ck-mem-consolidate-title { font-size: 13px; font-weight: 600; color: var(--ck-text); }
+  .ck-mem-profile { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--ck-border); }
+  .ck-mem-profile-title { font-size: 11px; color: var(--ck-text-dim); margin-bottom: 6px; }
+  .ck-mem-profile-row { display: flex; gap: 8px; padding: 3px 0; font-size: 12px; line-height: 1.5; }
+  .ck-mem-profile-label { flex-shrink: 0; min-width: 56px; color: var(--ck-text-dim); font-weight: 600; }
+  .ck-mem-profile-value { flex: 1; min-width: 0; color: var(--ck-text); word-break: break-all; }
+  /* LLM 配置折叠区（036） */
+  .ck-mem-llm-config { margin-top: 10px; }
+  .ck-mem-llm-config > summary {
+    cursor: pointer; font-size: 12px; color: var(--ck-text-dim);
+    padding: 6px 0; user-select: none; list-style: none;
+  }
+  .ck-mem-llm-config > summary::-webkit-details-marker { display: none; }
+  .ck-mem-llm-config > summary::before { content: '▸ '; transition: transform .15s; display: inline-block; }
+  .ck-mem-llm-config[open] > summary::before { transform: rotate(90deg); }
+  .ck-mem-llm-fields { padding: 8px 0 0 12px; display: flex; flex-direction: column; gap: 8px; }
+  .ck-mem-llm-row { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+  .ck-mem-llm-row > span { flex-shrink: 0; min-width: 110px; color: var(--ck-text-dim); }
+  .ck-mem-llm-row > input[type="text"],
+  .ck-mem-llm-row > input[type="password"] {
+    flex: 1; min-width: 0; padding: 5px 8px; font-size: 12px;
+    border: 1px solid var(--ck-border); border-radius: 7px;
+    background: var(--ck-surface); color: var(--ck-text);
+  }
+  .ck-mem-llm-actions { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+  /* 记忆作用域徽标（035）：全局 / 项目 */
+  .ck-mem-scope {
+    flex-shrink: 0; font-size: 10px; line-height: 1; padding: 3px 6px;
+    border-radius: 6px; font-weight: 600; letter-spacing: .02em;
+  }
+  .ck-mem-scope-user { color: var(--ck-primary); background: color-mix(in srgb, var(--ck-primary) 14%, transparent); }
+  .ck-mem-scope-project { color: var(--ck-text-dim); background: color-mix(in srgb, var(--ck-text-dim) 14%, transparent); }
   .ck-snip-name { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; color: var(--ck-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ck-snip-preview {
     font-size: 11px; color: var(--ck-text-dim); line-height: 1.5;
@@ -1515,7 +1552,48 @@
                   <span>启用记忆功能（关闭后不注入提示词、不捕获标记、不可调用）</span>
                 </label>
               </div>
-              <p class="ck-about-tip">记忆会随系统提示词发给模型，让 AI 了解你的习惯（跨项目保留）。</p>
+              <p class="ck-about-tip">记忆会随系统提示词发给模型，让 AI 了解你的习惯。<b>全局</b>记忆在所有项目生效；<b>项目</b>记忆只在所属项目生效。</p>
+
+              <!-- ===== 用户画像整理（036）===== -->
+              <div class="ck-mem-consolidate">
+                <div class="ck-mem-consolidate-head">
+                  <span class="ck-mem-consolidate-title">用户画像整理</span>
+                  <button class="ck-btn ck-btn-anim" id="mem-consolidate-btn">从对话生成画像</button>
+                </div>
+                <p class="ck-about-tip" id="mem-consolidate-status">检查中…</p>
+                <div class="ck-mem-profile" id="mem-profile-view" style="display:none"></div>
+
+                <details class="ck-mem-llm-config" id="mem-llm-config">
+                  <summary>LLM 配置（整理功能需要）</summary>
+                  <div class="ck-mem-llm-fields">
+                    <label class="ck-mem-llm-row">
+                      <span>启用整理</span>
+                      <input type="checkbox" id="mem-llm-enabled" />
+                    </label>
+                    <label class="ck-mem-llm-row">
+                      <span>端点（OpenAI 兼容）</span>
+                      <input type="text" id="mem-llm-baseurl" placeholder="https://open.bigmodel.cn/api/paas/v4" />
+                    </label>
+                    <label class="ck-mem-llm-row">
+                      <span>模型</span>
+                      <input type="text" id="mem-llm-model" placeholder="glm-4-plus" />
+                    </label>
+                    <label class="ck-mem-llm-row">
+                      <span>API Key</span>
+                      <input type="password" id="mem-llm-apikey" placeholder="留空则不改动" autocomplete="off" />
+                    </label>
+                    <div class="ck-mem-llm-actions">
+                      <button class="ck-btn ck-btn-anim" id="mem-llm-save">保存配置</button>
+                      <button class="ck-icon-btn" id="mem-llm-clear-key" title="清除已保存的 API Key">清除 Key</button>
+                    </div>
+                    <p class="ck-about-tip" style="margin-top:6px">
+                      Key 用系统加密（Windows DPAPI / macOS Keychain）保存，不写入 config.json。
+                      整理会把对话发给上述端点，请自行确认隐私边界。
+                    </p>
+                  </div>
+                </details>
+              </div>
+
               <div class="ck-list" id="mem-list">
                 <div class="ck-list-empty">加载中…</div>
               </div>
@@ -5107,6 +5185,12 @@
     }
     renderMemories();
   }
+  function scopeBadge(scope) {
+    if (scope === "user") {
+      return '<span class="ck-mem-scope ck-mem-scope-user" title="\u6240\u6709\u9879\u76EE\u751F\u6548">\u5168\u5C40</span>';
+    }
+    return '<span class="ck-mem-scope ck-mem-scope-project" title="\u4EC5\u8BE5\u9879\u76EE\u751F\u6548">\u9879\u76EE</span>';
+  }
   function renderMemories() {
     const listEl2 = document.getElementById("mem-list");
     if (!listEl2) return;
@@ -5115,7 +5199,7 @@
       return;
     }
     listEl2.innerHTML = memories.map((m) => {
-      return '<div class="ck-snip-item" data-id="' + escapeAttr(m.id) + '"><div class="ck-snip-top"><span class="ck-snip-name">' + escapeHtml(m.text) + '</span><div class="ck-snip-actions"><button class="ck-snip-icon-btn" data-edit="' + escapeAttr(m.id) + '" title="\u7F16\u8F91"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button><button class="ck-snip-icon-btn danger" data-del="' + escapeAttr(m.id) + '" title="\u5220\u9664"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button></div></div></div>';
+      return '<div class="ck-snip-item" data-id="' + escapeAttr(m.id) + '"><div class="ck-snip-top">' + scopeBadge(m.scope) + '<span class="ck-snip-name">' + escapeHtml(m.text) + '</span><div class="ck-snip-actions"><button class="ck-snip-icon-btn" data-edit="' + escapeAttr(m.id) + '" title="\u7F16\u8F91"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button><button class="ck-snip-icon-btn danger" data-del="' + escapeAttr(m.id) + '" title="\u5220\u9664"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button></div></div></div>';
     }).join("");
     listEl2.querySelectorAll("[data-edit]").forEach((btn) => {
       btn.addEventListener("click", async (e) => {
@@ -5129,14 +5213,14 @@
           await ckAlert("\u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A");
           return;
         }
-        memories = memories.map((x) => x.id === m.id ? { ...x, text: t } : x);
-        if (api.saveMemories) {
-          try {
-            await api.saveMemories(memories);
-          } catch (_) {
+        if (api.updateMemory) {
+          const r = await api.updateMemory(m.id, t);
+          if (!r || !r.success) {
+            await ckAlert(r && r.error || "\u66F4\u65B0\u5931\u8D25");
+            return;
           }
         }
-        renderMemories();
+        await loadMemories();
       });
     });
     listEl2.querySelectorAll("[data-del]").forEach((btn) => {
@@ -5163,9 +5247,15 @@
       await ckAlert("\u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A");
       return;
     }
+    const onlyProject = await ckConfirm("\u8FD9\u6761\u8BB0\u5FC6\u53EA\u5BF9\u5F53\u524D\u9879\u76EE\u751F\u6548\u5417\uFF1F\n\n\u786E\u5B9A = \u4EC5\u5F53\u524D\u9879\u76EE\n\u53D6\u6D88 = \u5168\u5C40\uFF08\u6240\u6709\u9879\u76EE\uFF09");
+    const scope = onlyProject ? "project" : "user";
     if (api.addMemory) {
       try {
-        await api.addMemory(t);
+        const r = await api.addMemory(t, scope);
+        if (!r || !r.success) {
+          await ckAlert(r && r.error || "\u6DFB\u52A0\u5931\u8D25");
+          return;
+        }
       } catch (_) {
       }
     }
@@ -5176,7 +5266,8 @@
     if (!api.setMemoriesEnabled) return;
     try {
       await api.setMemoriesEnabled(!!e.target.checked);
-      await ckAlert(e.target.checked ? "\u8BB0\u5FC6\u529F\u80FD\u5DF2\u5F00\u542F" : "\u8BB0\u5FC6\u529F\u80FD\u5DF2\u5173\u95ED");
+      const msg = e.target.checked ? "\u8BB0\u5FC6\u529F\u80FD\u5DF2\u5F00\u542F\u3002\n\n\u63D0\u793A\uFF1A\u9700\u8981\u91CD\u65B0\u521D\u59CB\u5316\u9879\u76EE\u624D\u4F1A\u628A\u5DF2\u6709\u8BB0\u5FC6\u6CE8\u5165\u7CFB\u7EDF\u63D0\u793A\u8BCD\u3002" : "\u8BB0\u5FC6\u529F\u80FD\u5DF2\u5173\u95ED\u3002";
+      await ckAlert(msg);
     } catch (_) {
       await ckAlert("\u8BBE\u7F6E\u5931\u8D25");
     }
@@ -5186,6 +5277,221 @@
       loadMemories();
     });
   }
+  var PROFILE_LABELS = [
+    ["identity", "\u8EAB\u4EFD"],
+    ["communication", "\u6C9F\u901A\u504F\u597D"],
+    ["engineering", "\u5DE5\u7A0B\u4E60\u60EF"],
+    ["environment", "\u73AF\u5883"],
+    ["notes", "\u5176\u4ED6"]
+  ];
+  async function loadConsolidationState() {
+    const statusEl = document.getElementById("mem-consolidate-status");
+    const profileEl = document.getElementById("mem-profile-view");
+    if (!statusEl) return;
+    if (!api.memoryConsolidationStatus) {
+      statusEl.textContent = "\u6574\u7406\u529F\u80FD\u4E0D\u53EF\u7528\uFF08IPC \u672A\u5C31\u7EEA\uFF09";
+      return;
+    }
+    try {
+      const st = await api.memoryConsolidationStatus();
+      if (!st || !st.success) {
+        statusEl.textContent = "\u8BFB\u53D6\u72B6\u6001\u5931\u8D25";
+        return;
+      }
+      if (!st.llmConfigured) {
+        statusEl.textContent = "\u672A\u914D\u7F6E LLM \u7AEF\u70B9\u4E0E\u6A21\u578B\u3002\u8BF7\u5728\u300C\u8BBE\u7F6E\u300D\u91CC\u586B\u5199\uFF08OpenAI \u517C\u5BB9\u683C\u5F0F\uFF09\u3002";
+      } else if (!st.hasApiKey) {
+        statusEl.textContent = "\u5DF2\u914D\u7F6E " + st.model + "\uFF0C\u4F46\u7F3A\u5C11 API Key\u3002\u8BF7\u5728\u300C\u8BBE\u7F6E\u300D\u91CC\u586B\u5199\u3002";
+      } else if (!st.enabled) {
+        statusEl.textContent = "\u6574\u7406\u529F\u80FD\u5DF2\u5173\u95ED\uFF08\u5728\u8BBE\u7F6E\u91CC\u5F00\u542F\uFF09\u3002";
+      } else {
+        const when = st.lastConsolidatedAt ? new Date(st.lastConsolidatedAt).toLocaleString() : "\u4ECE\u672A\u6574\u7406";
+        statusEl.textContent = "\u5DF2\u5C31\u7EEA\uFF1A" + st.model + "\uFF5C\u4E0A\u6B21\u6574\u7406\uFF1A" + when;
+      }
+    } catch (_) {
+      statusEl.textContent = "\u8BFB\u53D6\u72B6\u6001\u5931\u8D25";
+    }
+    if (!profileEl) return;
+    if (!api.memoryGetProfile) {
+      profileEl.style.display = "none";
+      return;
+    }
+    try {
+      const r = await api.memoryGetProfile();
+      const p = r && r.success ? r.profile : null;
+      if (!p) {
+        profileEl.style.display = "none";
+        return;
+      }
+      const rows = [];
+      for (const [key, label] of PROFILE_LABELS) {
+        const v = p[key];
+        if (typeof v === "string" && v.trim()) {
+          rows.push('<div class="ck-mem-profile-row"><span class="ck-mem-profile-label">' + label + '</span><span class="ck-mem-profile-value">' + escapeHtml(v) + "</span></div>");
+        }
+      }
+      if (p.projects && typeof p.projects === "object") {
+        for (const k of Object.keys(p.projects)) {
+          const v = p.projects[k];
+          if (typeof v === "string" && v.trim()) {
+            rows.push('<div class="ck-mem-profile-row"><span class="ck-mem-profile-label">\u9879\u76EE</span><span class="ck-mem-profile-value">' + escapeHtml(k) + "\uFF1A" + escapeHtml(v) + "</span></div>");
+          }
+        }
+      }
+      if (rows.length === 0) {
+        profileEl.style.display = "none";
+      } else {
+        profileEl.style.display = "";
+        profileEl.innerHTML = '<div class="ck-mem-profile-title">\u5F53\u524D\u753B\u50CF</div>' + rows.join("");
+      }
+    } catch (_) {
+      profileEl.style.display = "none";
+    }
+  }
+  function showConsolidationPreview(preview) {
+    return new Promise((resolve) => {
+      const oldP = preview.oldProfile || {};
+      const newP = preview.newProfile || {};
+      const fields = [
+        ["identity", "\u8EAB\u4EFD"],
+        ["communication", "\u6C9F\u901A\u504F\u597D"],
+        ["engineering", "\u5DE5\u7A0B\u4E60\u60EF"],
+        ["environment", "\u73AF\u5883"],
+        ["notes", "\u5176\u4ED6"]
+      ];
+      const lines = [];
+      lines.push("\u5C06\u6574\u7406 " + preview.messageCount + " \u6761\u6D88\u606F\uFF0C\u7528\u65F6 " + Math.round((preview.elapsedMs || 0) / 1e3) + " \u79D2\u3002");
+      if (preview.usage) {
+        lines.push("Token\uFF1A" + preview.usage.promptTokens + " \u5165 / " + preview.usage.completionTokens + " \u51FA");
+      }
+      lines.push("");
+      for (const [k, label] of fields) {
+        const o = String(oldP[k] || "").trim();
+        const n = String(newP[k] || "").trim();
+        if (o === n) continue;
+        lines.push("\u3010" + label + "\u3011");
+        if (o) lines.push("  \u65E7\uFF1A" + o);
+        if (n) lines.push("  \u65B0\uFF1A" + n);
+        lines.push("");
+      }
+      if (lines.length <= 4) {
+        lines.push("\uFF08\u753B\u50CF\u5185\u5BB9\u65E0\u5B9E\u8D28\u53D8\u5316\uFF09");
+      }
+      lines.push("\u786E\u8BA4\u5199\u5165\uFF1F");
+      ckConfirm(lines.join("\n")).then(resolve);
+    });
+  }
+  document.getElementById("mem-consolidate-btn")?.addEventListener("click", async () => {
+    const btn = document.getElementById("mem-consolidate-btn");
+    if (!api.memoryConsolidationPreview) {
+      await ckAlert("\u6574\u7406\u529F\u80FD\u4E0D\u53EF\u7528");
+      return;
+    }
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "\u6574\u7406\u4E2D\u2026";
+    }
+    try {
+      const preview = await api.memoryConsolidationPreview();
+      if (!preview || !preview.success) {
+        await ckAlert("\u6574\u7406\u5931\u8D25\uFF1A" + (preview && preview.error || "\u672A\u77E5\u9519\u8BEF"));
+        return;
+      }
+      const ok = await showConsolidationPreview(preview);
+      if (!ok) {
+        await ckAlert("\u5DF2\u53D6\u6D88\uFF0C\u753B\u50CF\u672A\u4FEE\u6539");
+        return;
+      }
+      if (!api.memoryConsolidationApply) {
+        await ckAlert("\u5E94\u7528\u901A\u9053\u4E0D\u53EF\u7528");
+        return;
+      }
+      const status = api.memoryConsolidationStatus ? await api.memoryConsolidationStatus() : null;
+      const model = status && status.model || "";
+      const apply = await api.memoryConsolidationApply({
+        profile: preview.newProfile,
+        maxMessageId: preview.maxMessageId,
+        model
+      });
+      if (!apply || !apply.success) {
+        await ckAlert("\u5199\u5165\u5931\u8D25\uFF1A" + (apply && apply.error || "\u672A\u77E5\u9519\u8BEF"));
+        return;
+      }
+      await ckAlert("\u753B\u50CF\u5DF2\u66F4\u65B0\u3002");
+      await loadConsolidationState();
+    } catch (err) {
+      await ckAlert("\u6574\u7406\u5F02\u5E38\uFF1A" + (err && err.message ? err.message : String(err)));
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "\u4ECE\u5BF9\u8BDD\u751F\u6210\u753B\u50CF";
+      }
+    }
+  });
+  async function loadLlmConfig() {
+    if (!api.memoryConsolidationStatus) return;
+    try {
+      const st = await api.memoryConsolidationStatus();
+      if (!st || !st.success) return;
+      const enabledEl = document.getElementById("mem-llm-enabled");
+      const baseUrlEl = document.getElementById("mem-llm-baseurl");
+      const modelEl = document.getElementById("mem-llm-model");
+      if (enabledEl) enabledEl.checked = !!st.enabled;
+      if (baseUrlEl) baseUrlEl.value = st.baseUrl || "";
+      if (modelEl) modelEl.value = st.model || "";
+    } catch (_) {
+    }
+  }
+  document.getElementById("mem-llm-save")?.addEventListener("click", async () => {
+    if (!api.memorySetLlmConfig) {
+      await ckAlert("\u914D\u7F6E\u901A\u9053\u4E0D\u53EF\u7528");
+      return;
+    }
+    const enabledEl = document.getElementById("mem-llm-enabled");
+    const baseUrlEl = document.getElementById("mem-llm-baseurl");
+    const modelEl = document.getElementById("mem-llm-model");
+    const keyEl = document.getElementById("mem-llm-apikey");
+    const baseUrl = (baseUrlEl && baseUrlEl.value || "").trim();
+    const model = (modelEl && modelEl.value || "").trim();
+    const enabled = !!(enabledEl && enabledEl.checked);
+    const key = (keyEl && keyEl.value || "").trim();
+    if (enabled && (!baseUrl || !model)) {
+      await ckAlert("\u542F\u7528\u6574\u7406\u9700\u8981\u586B\u5199\u7AEF\u70B9\u548C\u6A21\u578B");
+      return;
+    }
+    if (key) {
+      if (!api.memorySetApiKey) {
+        await ckAlert("Key \u5B58\u50A8\u901A\u9053\u4E0D\u53EF\u7528");
+        return;
+      }
+      const kr = await api.memorySetApiKey(key);
+      if (!kr || !kr.success) {
+        await ckAlert("\u4FDD\u5B58 Key \u5931\u8D25\uFF1A" + (kr && kr.error || "\u672A\u77E5\u9519\u8BEF"));
+        return;
+      }
+      if (keyEl) keyEl.value = "";
+    }
+    const r = await api.memorySetLlmConfig({ baseUrl, model, enabled });
+    if (!r || !r.success) {
+      await ckAlert("\u4FDD\u5B58\u914D\u7F6E\u5931\u8D25");
+      return;
+    }
+    await ckAlert("\u914D\u7F6E\u5DF2\u4FDD\u5B58\u3002");
+    await loadConsolidationState();
+  });
+  document.getElementById("mem-llm-clear-key")?.addEventListener("click", async () => {
+    if (!api.memoryClearApiKey) return;
+    if (!await ckConfirm("\u786E\u5B9A\u6E05\u9664\u5DF2\u4FDD\u5B58\u7684 API Key\uFF1F\u6574\u7406\u529F\u80FD\u5C06\u4E0D\u53EF\u7528\uFF0C\u76F4\u5230\u91CD\u65B0\u586B\u5199\u3002")) return;
+    const r = await api.memoryClearApiKey();
+    if (!r || !r.success) {
+      await ckAlert("\u6E05\u9664\u5931\u8D25");
+      return;
+    }
+    await ckAlert("API Key \u5DF2\u6E05\u9664\u3002");
+    await loadConsolidationState();
+  });
+  loadConsolidationState();
+  loadLlmConfig();
 
   // src/ui/shell/scripts/main.ts
   registerTab("workspaces", loadWorkspaces);

@@ -213,9 +213,9 @@ function buildPrompt(opts: { providerId: string; selectedDir: string; isCompacti
   const agentsSection = buildAgentsSection(scanAgents(selectedDir, pluginRoots.agentDirs));
   // 无 paths 的规则：始终注入（「## 项目规则」章节）
   const rulesSection = buildUnscopedRulesSection(getUnscopedRules(scanRules(selectedDir, pluginRoots.ruleDirs)));
-  // 用户记忆（跨项目）：让模型了解用户习惯
+  // 用户记忆：注入「用户级 + 当前项目级」（035 起按项目过滤，避免项目记忆污染其他项目）
   let memorySection = '';
-  try { memorySection = buildMemorySection(); } catch (err: any) {
+  try { memorySection = buildMemorySection(selectedDir); } catch (err: any) {
     console.warn('[Cuckoo Code] 读取用户记忆失败:', err && err.message ? err.message : String(err));
   }
 
