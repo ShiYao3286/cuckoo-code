@@ -315,7 +315,7 @@
   #agent-modal .ck-modal { max-width: 360px; }
   /* 通用弹框 */
   .ck-dialog { max-width: 280px; }
-  .ck-dialog-msg { font-size: 12.5px; color: var(--ck-text-2); line-height: 1.6; word-break: break-word; }
+  .ck-dialog-msg { font-size: 12.5px; color: var(--ck-text-2); line-height: 1.6; word-break: break-word; max-height: 60vh; overflow-y: auto; white-space: pre-wrap; }
   /* 侧边栏相对定位（弹层锚点�?*/
   .ck-panel { position: relative; }
   /* 「文件」页内：左树 + 右预览 分栏 */
