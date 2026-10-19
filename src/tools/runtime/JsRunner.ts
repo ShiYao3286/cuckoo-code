@@ -18,6 +18,7 @@ import { getPluginScanRoots } from '../../plugins/roots.js';
 import { matchRulesForPath } from '../../rules/matcher.js';
 import { renderRuleFull, renderRulePointer } from '../../rules/prompt.js';
 import { buildTruncatedOutput } from './spill.js';
+import { prependInjections } from './injections.js';
 import { recordCall } from './repeat-guard.js';
 import { getRepeatCallThreshold } from '../../infra/config.js';
 
@@ -342,18 +343,15 @@ class JsRunner {
 
       let output = parts.filter(Boolean).join('\n\n');
 
-      // ===== 规则注入（有 paths 的规则，read 命中时）=====
-      const rulesInjection = buildRulesInjection(readFiles, projectDir, settings);
-      if (rulesInjection) {
-        // 拼在输出开头（截断切尾，开头必保留）
-        output = rulesInjection + '\n\n' + output;
-      }
-
-      // ===== 重复调用提醒（成功路径）=====
-      // 与规则注入同一通道：拼在输出开头，截断也切不到它。
-      if (repeatHints.length > 0) {
-        output = repeatHints.join('\n\n') + (output ? '\n\n' + output : '');
-      }
+      // ===== 每轮注入通道（T2）=====
+      // 所有"拼在回传输出开头"的内容统一走这里：顺序显式、去重、有长度预算。
+      // 放在 OUTPUT_LIMIT 之前——注入的是给模型看的短提示，被截断就失去意义。
+      output = prependInjections(output, [
+        // 重复调用提醒（成功路径）：比规则更紧急，排在前
+        repeatHints.length > 0 ? repeatHints.join('\n\n') : null,
+        // 规则注入（有 paths 的规则，read 命中时）
+        buildRulesInjection(readFiles, projectDir, settings),
+      ]);
 
       if (output.length > OUTPUT_LIMIT) {
         // 先落盘再截断：模型拿到的不是"被砍掉一半的文本"，而是首尾 + 可精读的完整文件路径
