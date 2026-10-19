@@ -112,14 +112,35 @@ async function previewConsolidation(): Promise<PreviewResult> {
   const meta = readMeta();
   const cursor = meta.lastConsolidatedMessageId || 0;
 
-  // 增量：只要 cursor 之后的消息，且只取有正文的
-  const fresh = read.messages.filter((m) => m.messageId > cursor && m.content);
+  // 增量：先按游标过滤，再看正文能否取出——分开诊断，否则「正文取不到」会被误报成「没有新对话」
+  const afterCursor = read.messages.filter((m) => m.messageId > cursor);
+  if (afterCursor.length === 0) {
+    return {
+      success: false,
+      error: '没有新对话可整理（上次已整理到最新，游标=' + cursor + '）',
+    };
+  }
+
+  const fresh = afterCursor.filter((m) => m.content);
+  if (fresh.length === 0) {
+    // 正文取不到：把字段结构 dump 出来，便于定位（这是 036 真机验证的关键诊断点）
+    const sample = afterCursor[afterCursor.length - 1];
+    const diag = sample && sample.rawKeys
+      ? sample.rawKeys.join(', ')
+      : '(无诊断信息)';
+    return {
+      success: false,
+      error:
+        '读到了 ' + afterCursor.length + ' 条消息，但取不到正文。\n' +
+        '消息对象的字段：' + diag + '\n' +
+        '请把这段信息反馈给开发者——需要根据实际字段名调整正文提取逻辑。',
+    };
+  }
+
   if (fresh.length < 2) {
     return {
       success: false,
-      error: fresh.length === 0
-        ? '没有新对话可整理（上次已整理到最新）'
-        : '新对话太少（至少需要一对问答）',
+      error: '新对话太少（' + fresh.length + ' 条，至少需要一对问答）',
     };
   }
 

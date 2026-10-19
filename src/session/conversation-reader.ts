@@ -71,8 +71,20 @@ function readConversationInPage(sessionId: string): Promise<{
             return done({ messages: [], currentMessageId: null, storeNames, error: 'no chat_messages' });
           }
 
-          // 抽取正文：优先 content 字符串，其次 fragments 数组
+          /**
+           * 抽取正文。
+           *
+           * 三层策略（从确定到自适应）：
+           *   1. 已知字段：m.content（字符串）/ m.fragments（数组）
+           *   2. 常见嵌套：m.message.content / m.data.content 等
+           *   3. 兜底扫描：遍历所有字符串字段，取最长的那个（正文通常显著长于其他字段）
+           *
+           * 为什么不硬编码字段名：DeepSeek 的 IDB 结构可能随版本变化，
+           * 而「正文是消息里最长的字符串」这个观察是稳定的。
+           * 探测命中时把 source 写成 'auto:<字段名>'，便于排查。
+           */
           const extractContent = (m: any): { content: string; source: string; rawKeys: string[] } => {
+            // 1. 已知字段
             if (typeof m.content === 'string' && m.content) {
               return { content: m.content, source: 'content', rawKeys: [] };
             }
@@ -85,7 +97,45 @@ function readConversationInPage(sessionId: string): Promise<{
               }
               if (s) return { content: s, source: 'fragments', rawKeys: [] };
             }
-            return { content: '', source: 'unknown', rawKeys: Object.keys(m) };
+
+            // 2. 常见嵌套
+            for (const wrapKey of ['message', 'data', 'payload', 'body']) {
+              const inner = m[wrapKey];
+              if (inner && typeof inner === 'object') {
+                if (typeof inner.content === 'string' && inner.content) {
+                  return { content: inner.content, source: 'auto:' + wrapKey + '.content', rawKeys: [] };
+                }
+                if (typeof inner.text === 'string' && inner.text) {
+                  return { content: inner.text, source: 'auto:' + wrapKey + '.text', rawKeys: [] };
+                }
+              }
+            }
+
+            // 3. 兜底：找最长的字符串字段
+            //    排除明显不是正文的字段（id/时间戳/角色/父指针）
+            const skip = new Set(['role', 'id', 'message_id', 'parent_id', 'status', 'model', 'type', 'created_at', 'updated_at', 'inserted_at']);
+            // 排除 ISO 时间戳格式（如 2026-10-19T12:00:00Z）——它们可能比短正文长
+            const isIsoTimestamp = (s: string) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s);
+            let bestKey = '';
+            let bestVal = '';
+            for (const k of Object.keys(m)) {
+              if (skip.has(k)) continue;
+              const v = m[k];
+              if (typeof v !== 'string') continue;
+              if (isIsoTimestamp(v)) continue;
+              if (v.length > bestVal.length) {
+                bestKey = k;
+                bestVal = v;
+              }
+            }
+            // 长度阈值：2 字符（中文 2 字已有意义；配合上面的时间戳排除，误判风险可控）
+            if (bestVal.length >= 2) {
+              return { content: bestVal, source: 'auto:' + bestKey, rawKeys: [] };
+            }
+
+            // 全都没命中：把字段名和类型 dump 出去，供排查
+            const debugKeys = Object.keys(m).map((k) => k + '(' + typeof m[k] + ')');
+            return { content: '', source: 'unknown', rawKeys: debugKeys };
           };
 
           const byId = new Map<number, any>();
