@@ -9,17 +9,13 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    strategy:
-      max-parallel: 1
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            command: build:win:local
-          - os: macos-latest
-            command: build:mac:local
-    runs-on: ${{ matrix.os }}
+  # ========== Windows 构建（主力发布平台，独立成 job）==========
+  # 为什么要独立：此前 win/mac 放在同一个 matrix（max-parallel: 1）里，publish 用 `needs: build`
+  # 等整个矩阵成功。实测 v0.8.27/28 两次都是 Windows 成功、macOS 被 cancelled（runner 排队超时），
+  # 于是整个 build 判失败、publish 被 skipped —— Windows 产物明明构建好了却一个都没发出去。
+  # Windows 是主要发布目标，不该被 macOS 的排队问题拖下水。
+  build-win:
+    runs-on: windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,7 +34,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # 缓存自带运行时（uv/node），版本没变则跳过下载
       - name: Cache runtime binaries
         uses: actions/cache@v4
         with:
@@ -48,37 +43,94 @@ jobs:
       - name: Fetch runtime binaries
         run: node scripts/fetch-runtime.mjs
 
-      # 只构建，不发布（发布统一由下方 publish job 负责，避免多 job 各建一个 release）
       - name: Build
-        run: npm run ${{ matrix.command }}
+        run: npm run build:win:local
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: dist-${{ matrix.os }}
+          name: dist-windows
           path: |
             dist/*.exe
             dist/*.blockmap
             dist/*.zip
-            dist/*.dmg
             dist/latest*.yml
           retention-days: 30
 
-  # 统一发布：等所有平台构建完，下载全部产物，创建/更新唯一的 Release
+  # ========== macOS 构建（允许失败，不阻塞 Windows 发布）==========
+  build-mac:
+    runs-on: macos-latest
+    # 不设 needs：与 Windows 并行跑。此前 max-parallel: 1 让 mac 必须等 win，
+    # 叠加排队时间导致 runner 被取消。
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Sync version from tag
+        run: node scripts/sync-version.js
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Cache runtime binaries
+        uses: actions/cache@v4
+        with:
+          path: resources/runtime
+          key: runtime-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/runtime-versions.json') }}
+
+      - name: Fetch runtime binaries
+        run: node scripts/fetch-runtime.mjs
+
+      - name: Build
+        run: npm run build:mac:local
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-macos
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/latest*.yml
+          retention-days: 30
+
+  # ========== 统一发布 ==========
+  # 发布：等两个 build 都结束，但**只以 Windows 的结论为门禁**。
+  #
+  # 为什么是 needs 两个 + always() + win 成功判断：
+  #  - 只 needs build-win → mac 尚未跑完就发布，会白丢本可成功的 mac 产物；
+  #  - needs 两个但不加 always() → mac 一取消，publish 又被 skipped，回到老问题；
+  #  - 加 always() 但不判断 win → Windows 真失败时也会去发半成品 release。
+  # 三者结合：等到 mac 结束、不被它的结论拖累、Windows 失败则不发。
   publish:
-    needs: build
+    needs: [build-win, build-mac]
+    if: ${{ always() && needs.build-win.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
+      # 沿用 v0.8.18~v0.8.26 已验证可行的单步下载（不指定 name + merge-multiple）。
+      # 好处：mac 产物不存在时不会报错 —— 它只是"没有被上传"，而不是"缺失的文件"。
       - name: Download all artifacts
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
 
       - name: List files
-        run: ls -la dist/
+        run: ls -la dist/ || true
 
-      # 正式版（tag 不含 -beta）：创建正式 Release
+      - name: Require Windows installer present
+        run: |
+          ls dist/*.exe >/dev/null 2>&1 || { echo "::error::未找到 Windows 安装包，中止发布"; exit 1; }
+
       - name: Publish Release
         if: ${{ !contains(github.ref_name, '-beta') }}
         uses: softprops/action-gh-release@v2
@@ -88,6 +140,9 @@ jobs:
           draft: false
           make_latest: false   # 不自动设为 Latest（由人工确认后手动切换）
           generate_release_notes: true
+          # 关键：mac 缺席时不要因"匹配不到文件"而整体失败。
+          # 通配符 + fail_on_unmatched_files: false → 有多少发多少（至少保证 Windows 那份）。
+          fail_on_unmatched_files: false
           files: |
             dist/*.exe
             dist/*.blockmap
