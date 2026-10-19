@@ -104,14 +104,25 @@ const SYSTEM_PROMPT = [
   '  "projects": {},',
   '  "notes": "字符串"',
   '}',
+  '',
+  '**警告：必须直接输出上述 JSON 对象，不要包含任何解释性文字、不要输出“这...”等内容，必须以 { 开头，以 } 结尾。**',
 ].join('\n');
 
-/** 从 LLM 返回文本里抽出 JSON（容错 markdown 代码块包裹） */
+/** 从 LLM 返回文本里抽出 JSON（容错 markdown 代码块包裹、以及前后废话） */
 function extractJson(text: string): any {
   let s = String(text || '').trim();
-  // 剥 markdown 代码块
+  // 1. 剥 markdown 代码块
   const fence = s.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
   if (fence) s = fence[1].trim();
+  
+  // 2. 暴力截取第一个 { 到最后一个 } 之间的内容
+  // （有些模型废话太多，或者不支持 response_format，只能手动抠）
+  const start = s.indexOf('{');
+  const end = s.lastIndexOf('}');
+  if (start !== -1 && end !== -1 && end > start) {
+    s = s.slice(start, end + 1);
+  }
+  
   return JSON.parse(s);
 }
 
