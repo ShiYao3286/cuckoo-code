@@ -73,6 +73,19 @@ describe('registry.execute 计划只读护栏（两条 IPC 路径的共同收口
     assert.strictEqual(r.success, false);
     assert.strictEqual(r.code, 'PLAN_READ_ONLY');
     assert.match(String(r.error), /计划模式/);
+    // 错误文本不能自带 [error code:] 前缀——由 JsRunner 统一渲染（030 约定），
+    // 这里自己拼会重复成两遍。
+    assert.ok(!String(r.error).includes('[error code:'), 'registry 不应自行拼错误码前缀');
+  });
+
+  test('E2E：经 JsRunner 渲染后前缀只出现一次（防重复拼接回归）', async () => {
+    const { JsRunner } = await import('../../src/tools/runtime/JsRunner.js');
+    setPlanPhase('g1b', 'draft');
+    const runner = new JsRunner(registry);
+    const r = await runner.run('await write("nope.txt", "x");', process.cwd(), 1, { sessionId: 'g1b' });
+    assert.strictEqual(r.success, false);
+    const occurrences = (String(r.error).match(/\[error code: PLAN_READ_ONLY\]/g) || []).length;
+    assert.strictEqual(occurrences, 1, '错误码前缀应恰好一次，实际 ' + occurrences + ' 次\n' + r.error);
   });
 
   test('draft 期 bash 被拒（副作用命令不允许偷跑）', async () => {

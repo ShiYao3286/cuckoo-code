@@ -43,8 +43,9 @@ class ToolRegistry {
     // todoWrite 不在黑名单：草稿期的正确动作恰恰是列计划。
     if (isPlanReadOnly(params && params.sessionId) && isWriteTool(name)) {
       const msg = guardPlanReadOnly(params && params.sessionId, name);
-      return ToolResult.error('[error code: ' + ToolErrorCode.PLAN_READ_ONLY + '] ' + (msg || '计划模式下只读'),
-        ToolErrorCode.PLAN_READ_ONLY);
+      // 只带 code、不加 [error code: X] 前缀——前缀由 JsRunner 统一渲染（030 的约定），
+      // 在这里自己拼会与它重复成两遍。
+      return ToolResult.error(msg || '计划模式下只读', ToolErrorCode.PLAN_READ_ONLY);
     }
     try {
       return await tool.execute(params);
