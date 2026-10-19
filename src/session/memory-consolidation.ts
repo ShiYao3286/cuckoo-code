@@ -112,6 +112,8 @@ async function previewConsolidation(): Promise<PreviewResult> {
   const meta = readMeta();
   const cursor = meta.lastConsolidatedMessageId || 0;
 
+  console.log('[MemoryProbe] 读取到总消息: ' + read.messages.length + ' 条，当前游标: ' + cursor);
+
   // 增量：先按游标过滤，再看正文能否取出——分开诊断，否则「正文取不到」会被误报成「没有新对话」
   const afterCursor = read.messages.filter((m) => m.messageId > cursor);
   if (afterCursor.length === 0) {
@@ -149,6 +151,8 @@ async function previewConsolidation(): Promise<PreviewResult> {
     return { success: false, error: '对话正文为空' };
   }
 
+  console.log('[MemoryProbe] 过滤后有正文的消息数: ' + fresh.length + '，准备调用 LLM: ' + llm.model);
+
   const r = await consolidateProfile({
     existingProfile: oldProfile,
     conversation,
@@ -159,8 +163,10 @@ async function previewConsolidation(): Promise<PreviewResult> {
   });
 
   if (!r.success) {
+    console.log('[MemoryProbe] LLM 调用失败: ' + r.error);
     return { success: false, error: r.error, elapsedMs: Date.now() - t0 };
   }
+  console.log('[MemoryProbe] LLM 调用成功，耗时: ' + r.elapsedMs + 'ms');
 
   const maxMessageId = fresh.reduce((max, m) => Math.max(max, m.messageId), cursor);
 

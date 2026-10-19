@@ -130,11 +130,13 @@ function readConversationInPage(sessionId: string): Promise<{
             }
             // 长度阈值：2 字符（中文 2 字已有意义；配合上面的时间戳排除，误判风险可控）
             if (bestVal.length >= 2) {
+              console.log('[MemoryProbe] 采用 auto 兜底字段提取正文: ' + bestKey + ' (长度=' + bestVal.length + ')');
               return { content: bestVal, source: 'auto:' + bestKey, rawKeys: [] };
             }
 
             // 全都没命中：把字段名和类型 dump 出去，供排查
             const debugKeys = Object.keys(m).map((k) => k + '(' + typeof m[k] + ')');
+            console.log('[MemoryProbe] 警告：消息未能提取正文。字段列表: ' + debugKeys.join(', '));
             return { content: '', source: 'unknown', rawKeys: debugKeys };
           };
 
