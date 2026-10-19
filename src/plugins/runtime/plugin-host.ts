@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Cuckoo 插件系统 - 插件运行时管理器（PluginHost）
  *
  * 统一管理所有 DSH 风格插件（含 dsh/ 和 ui/ 两类）的生命周期：
@@ -18,6 +18,7 @@
 import { loadPluginSource } from './loader.js';
 import type { LoadedPlugin } from './loader.js';
 import { attachUi } from './ui-runtime.js';
+import { registerContext, unregisterContext } from './compat/bridge.js';
 import type { HostCapabilities } from './context.js';
 import type { PluginContext } from './types.js';
 import { ServiceRegistryImpl } from './service-registry.js';
@@ -121,6 +122,12 @@ export class PluginHost {
         plugin,
         loadedAt: Date.now(),
       });
+      // ===== 注册到事件桥（需求 038）=====
+      // 此前这里只 attachUi，没把 ctx 注册进 compat/bridge 的 activeContexts，
+      // 导致 bindCuckooEvents 派发的 agent/* 事件（assistant-stream / turn-end / tool-result…）
+      // 永远到不了通过 PluginHost 加载的插件 —— 插件收不到任何 AI 事件。
+      // PluginHost 自己虽有一套 broadcast()，但它只被暴露成 API、没有事件源驱动，形同虚设。
+      try { registerContext(plugin.ctx as any); } catch (_) { /* 注册失败不拦加载 */ }
       // T4：跟踪依赖——服务被移除时，卸载依赖它的插件
       for (const svc of plugin.inject || []) {
         const off = this.registry.onRemove(svc, () => {
@@ -154,6 +161,8 @@ export class PluginHost {
   unload(name: string): boolean {
     const rec = this.records.get(name);
     if (!rec) return false;
+    // 先从事件桥摘掉，避免卸载中的插件继续收事件（也防止 activeContexts 泄漏）
+    try { unregisterContext(rec.plugin.ctx as any); } catch (_) { /* ignore */ }
     try {
       rec.plugin.dispose();
     } catch (err) {
