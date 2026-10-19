@@ -202,6 +202,16 @@ const shellAPI = {
   onMemoriesChanged: (cb: () => void) => {
     ipcRenderer.on('shell-memories-changed', () => cb());
   },
+  // ===== 记忆整理（036）=====
+  memoryConsolidationStatus: () => ipcRenderer.invoke('memory-consolidation-status'),
+  memoryConsolidationPreview: () => ipcRenderer.invoke('memory-consolidation-preview'),
+  memoryConsolidationApply: (payload: any) => ipcRenderer.invoke('memory-consolidation-apply', payload),
+  memoryConsolidationRollback: () => ipcRenderer.invoke('memory-consolidation-rollback'),
+  memoryGetProfile: () => ipcRenderer.invoke('memory-get-profile'),
+  memoryClearProfile: () => ipcRenderer.invoke('memory-clear-profile'),
+  memorySetLlmConfig: (cfg: any) => ipcRenderer.invoke('memory-set-llm-config', cfg),
+  memorySetApiKey: (key: string) => ipcRenderer.invoke('memory-set-api-key', { key }),
+  memoryClearApiKey: () => ipcRenderer.invoke('memory-clear-api-key'),
   // ========== 设置 ==========
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (data: any) => ipcRenderer.invoke('save-settings', { data }),

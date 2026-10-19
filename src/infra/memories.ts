@@ -20,7 +20,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { isMemoriesEnabled } from './config.js';
-import { readJsonFile } from './json-file.js';
+import { readMemoriesFile, writeMemoriesFile } from './memories-file.js';
+import { readProfile } from './memory-profile.js';
 
 /** 全局作用域的固定值 */
 const SCOPE_USER = 'user';
@@ -84,57 +85,32 @@ function normalizeMemory(raw: any): Memory | null {
   };
 }
 
-/** 读取全部记忆（文件不存在返回空数组；损坏时也不抛异常） */
-function readAll(): Memory[] {
-  const file = getMemoriesFile();
-  try {
-    if (fs.existsSync(file)) {
-      // readJsonFile 会剥掉 UTF-8 BOM（Windows 编辑器常见，否则 JSON.parse 直接失败）
-      const raw = readJsonFile(file);
-      if (Array.isArray(raw)) {
-        return raw.map(normalizeMemory).filter(Boolean) as Memory[];
-      }
-    }
-  } catch (err: any) {
-    console.error('[Memories] 读取失败:', err.message);
-  }
-  return [];
-}
-
 /**
- * 原子写入：先写临时文件，再 rename 覆盖目标文件。
- * - 同盘 rename 是原子的，进程在写完 tmp 之前崩溃 -> 原文件不动
- * - rename 失败（跨盘/权限）时清理 tmp 并抛出，由调用方捕获
+ * 读取全部记忆（从 v2 文件的 savedMemories 字段）。
+ * v1 数组格式由 memories-file 层自动升级。
  */
-function writeAtomic(file: string, content: string): void {
-  const tmp = file + '.tmp-' + process.pid + '-' + Date.now();
-  try {
-    fs.writeFileSync(tmp, content, 'utf-8');
-  } catch (err) {
-    try { fs.unlinkSync(tmp); } catch { /* ignore */ }
-    throw err;
-  }
-  try {
-    fs.renameSync(tmp, file);
-  } catch (err) {
-    try { fs.unlinkSync(tmp); } catch { /* ignore */ }
-    throw err;
-  }
+function readAll(): Memory[] {
+  const file = readMemoriesFile();
+  return file.savedMemories.map(normalizeMemory).filter(Boolean) as Memory[];
 }
 
 /**
- * 整体覆盖写入。
+ * 整体覆盖写入 savedMemories（不动 profile / meta）。
  * @returns { success, dropped } —— dropped 是被丢弃的非法项数（text 为空、非对象等），
  *          让 UI 能提示「已保存 N 条，跳过 M 条无效项」，而不是静默丢数据。
  */
 function saveMemories(list: any): { success: boolean; dropped: number } {
-  const file = getMemoriesFile();
   try {
     const arr = Array.isArray(list) ? list : [];
     const clean = arr.map(normalizeMemory).filter(Boolean) as Memory[];
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    writeAtomic(file, JSON.stringify(clean, null, 2));
-    console.log('[Memories] 已写入:', file, '共', clean.length, '条');
+    const file = readMemoriesFile();
+    file.savedMemories = clean;
+    const w = writeMemoriesFile(file);
+    if (!w.success) {
+      console.error('[Memories] 写入失败:', w.error);
+      return { success: false, dropped: 0 };
+    }
+    console.log('[Memories] 已写入 savedMemories，共', clean.length, '条');
     return { success: true, dropped: arr.length - clean.length };
   } catch (err: any) {
     console.error('[Memories] 写入失败:', err.message);
@@ -230,45 +206,107 @@ function updateMemory(id: string, text: string): Memory | null {
   return saveMemories(next).success ? next[idx] : null;
 }
 
+/** 画像字段的中文标题（用于注入时的分节显示） */
+const PROFILE_LABELS: Array<{ key: keyof import('./memories-file.js').MemoryProfile; label: string }> = [
+  { key: 'identity', label: '身份' },
+  { key: 'communication', label: '沟通偏好' },
+  { key: 'engineering', label: '工程习惯' },
+  { key: 'environment', label: '环境' },
+  { key: 'notes', label: '其他' },
+];
+
 /**
  * 构建注入提示词的「用户记忆」章节。
- * @param projectDir 当前项目目录；给出时会追加该项目的记忆，缺省/空只注入用户级
- * @returns 章节文本；无相关记忆或功能关闭时返回空串
+ *
+ * 036 起注入两块内容（按优先级）：
+ *   1. **画像**（LLM 重写的结构化段落）—— 信息密度高，放前面
+ *   2. **硬事实**（用户/AI 明确记的 savedMemories）—— 用户原话，优先级最高
+ *
+ * 为什么硬事实放后面但标「务必遵循」：画像可能是推断，硬事实是用户明说的，冲突时以硬事实为准。
+ *
+ * @param projectDir 当前项目目录；给出时会追加该项目的记忆与项目画像
+ * @returns 章节文本；无内容或功能关闭时返回空串
  */
 function buildMemorySection(projectDir?: string | null): string {
   if (!isMemoriesEnabled()) return '';
-  const list = projectDir ? listMemoriesForProject(projectDir) : readAll().filter((m) => m.scope === SCOPE_USER);
-  if (!list.length) return '';
 
-  const projectKey = projectDir ? normalizeProjectPath(projectDir) : null;
-  const lines = list.map((m) => {
-    const tag = m.scope === SCOPE_USER ? '' : '（本项目）';
-    return '- ' + tag + m.text.replace(/\n/g, ' ');
-  });
+  const sections: string[] = [];
 
-  // 按条截断（而非按字符硬切），避免切在多字节/半句话中间
-  const kept: string[] = [];
-  let total = 0;
-  let omitted = 0;
-  for (const line of lines) {
-    if (total + line.length + 1 > MAX_SECTION_LEN) {
-      omitted += 1;
-      continue;
+  // ---- 1. 画像 ----
+  let profile: any = null;
+  try {
+    profile = readProfile();
+  } catch (err: any) {
+    console.warn('[Memories] 读取画像失败:', err && err.message);
+  }
+
+  if (profile) {
+    const profileLines: string[] = [];
+    for (const { key, label } of PROFILE_LABELS) {
+      const v = profile[key];
+      if (typeof v === 'string' && v.trim()) {
+        profileLines.push('- **' + label + '**：' + v.replace(/\n/g, ' '));
+      }
     }
-    kept.push(line);
-    total += line.length + 1;
+    // 项目画像：只取当前项目的
+    if (projectDir && profile.projects && typeof profile.projects === 'object') {
+      const norm = normalizeProjectPath(projectDir);
+      for (const [k, v] of Object.entries(profile.projects)) {
+        if (typeof v === 'string' && v.trim() && normalizeProjectPath(k) === norm) {
+          profileLines.push('- **本项目约定**：' + v.replace(/\n/g, ' '));
+        }
+      }
+    }
+    if (profileLines.length > 0) {
+      sections.push([
+        '### 用户画像',
+        '',
+        '以下是从历史对话中归纳的画像，供理解用户背景（如与用户明说的冲突，以明说的为准）：',
+        '',
+        profileLines.join('\n'),
+      ].join('\n'));
+    }
   }
-  let body = kept.join('\n');
-  if (omitted > 0) {
-    body += '\n- ...（另有 ' + omitted + ' 条记忆未展示，可让用户到侧边栏「记忆」页查看）';
+
+  // ---- 2. 硬事实 ----
+  const list = projectDir ? listMemoriesForProject(projectDir) : readAll().filter((m) => m.scope === SCOPE_USER);
+  if (list.length > 0) {
+    const lines = list.map((m) => {
+      const tag = m.scope === SCOPE_USER ? '' : '（本项目）';
+      return '- ' + tag + m.text.replace(/\n/g, ' ');
+    });
+
+    // 按条截断（而非按字符硬切）
+    const kept: string[] = [];
+    let total = 0;
+    let omitted = 0;
+    for (const line of lines) {
+      if (total + line.length + 1 > MAX_SECTION_LEN) {
+        omitted += 1;
+        continue;
+      }
+      kept.push(line);
+      total += line.length + 1;
+    }
+    let body = kept.join('\n');
+    if (omitted > 0) {
+      body += '\n- ...（另有 ' + omitted + ' 条记忆未展示，可让用户到侧边栏「记忆」页查看）';
+    }
+    sections.push([
+      '### 用户明确要求记住的事实',
+      '',
+      '以下条目是用户或 AI 明确要求记住的，**务必遵循**：',
+      '',
+      body,
+    ].join('\n'));
   }
+
+  if (sections.length === 0) return '';
 
   return [
     '## 用户记忆',
     '',
-    '以下是用户过往沉淀的偏好与习惯，请在后续工作中遵循（除非用户明确改变要求）：',
-    '',
-    body,
+    sections.join('\n\n'),
   ].join('\n');
 }
 
