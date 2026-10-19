@@ -158,6 +158,20 @@ let electronAPI: any = {
   overlaySetInteractive: (interactive: boolean) => {
     return ipcRenderer.invoke('plugin-overlay-set-interactive', { interactive: !!interactive });
   },
+  /**
+   * 取当前项目目录（需求 039）
+   *
+   * 插件上下文的 getProjectDir 原先是读 DOM 元素 `cuckoo-project-dir` 的 textContent，
+   * 但全仓库没有任何代码创建那个元素 → 永远返回 null → 插件拿不到项目目录
+   * （写作台无法定位正文目录）。改为走主进程 sessionStore：
+   * AI 页面（view.webContents）也在 getContextByWebContents 的匹配范围内。
+   * @returns { success: boolean, dir: string|null }
+   */
+  getProjectDir: () => ipcRenderer.invoke('get-project-dir'),
+  /** 订阅项目目录变更（需求 039：切换项目后插件要能重新定位） */
+  onProjectDirUpdated: (cb: (dir: string | null) => void) => {
+    ipcRenderer.on('project-dir-updated', (_e: any, dir: any) => cb(dir || null));
+  },
   /** 注入代码到主世界（主进程 webContents.executeJavaScript） */
   injectMainWorld: (code: string) => {
     return ipcRenderer.invoke('plugin-inject-main-world', { code });

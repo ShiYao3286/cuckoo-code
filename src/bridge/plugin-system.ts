@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Cuckoo 插件系统 - 渲染进程接线（用 PluginHost 统一管理）
  *
  * 把 Cuckoo 运行时能力包装成宿主能力，拉取 dsh/ 和 ui/ 插件源码，
@@ -77,17 +77,36 @@ function currentSessionId(): string | null {
 
 /** 宿主能力实现 */
 function buildHost(): HostCapabilities {
+  /**
+   * 项目目录缓存（需求 039）
+   * 原实现读 DOM 元素 `cuckoo-project-dir`，但全仓库无人创建该元素 → 永远 null。
+   * 改为异步 IPC 拉取后缓存：插件里 ctx.sessions.current() 是同步接口，
+   * 不能每次都 await，所以启动/目录变更时预热一次。
+   */
+  let cachedProjectDir: string | null = null;
+  const refreshProjectDir = (): void => {
+    try {
+      const api = (window as any).electronAPI;
+      if (api && typeof api.getProjectDir === 'function') {
+        Promise.resolve(api.getProjectDir()).then((r: any) => {
+          if (r && r.success) cachedProjectDir = r.dir || null;
+        }).catch(() => { /* ignore */ });
+      }
+    } catch (_) { /* ignore */ }
+  };
+  refreshProjectDir();
+  // 切换项目目录后要重新拉，否则插件一直用旧路径
+  try {
+    const api = (window as any).electronAPI;
+    if (api && typeof api.onProjectDirUpdated === 'function') {
+      api.onProjectDirUpdated((dir: string | null) => { cachedProjectDir = dir || null; });
+    }
+  } catch (_) { /* ignore */ }
+
   return {
     sendToChat: (text: string) => sendToChat(text, 'plugin', 300),
     getCurrentSessionId: () => currentSessionId(),
-    getProjectDir: () => {
-      try {
-        const el = document.getElementById('cuckoo-project-dir');
-        return el ? (el.textContent || '').trim() || null : null;
-      } catch (_) {
-        return null;
-      }
-    },
+    getProjectDir: () => cachedProjectDir,
     listSessions: () => {
       try {
         const raw = localStorage.getItem('cuckoo-token-cache');
