@@ -198,29 +198,26 @@ class JsRunner {
       }
 
       let result;
-      const tool = this.registry.get(op);
-      if (!tool) {
-        result = { success: false, error: '未知工具: ' + op };
-        toolFailures.push({ tool: op || 'unknown', args: args, error: result.error });
-      } else {
-        try {
-          result = await tool.execute(Object.assign({}, settings || {}, args, { projectDir, currentWindowId: windowId }));
-          // 稳定的机器可路由错误码渲染进回传文本：模型按码分流，不必靠猜中文文案。
-          // 有码时格式为 `[error code: X] 原文…`，与 src/prompt/discipline.md 的「失败分流」表对应。
-          if (result && result.success === false && result.code) {
-            result = Object.assign({}, result, { error: '[error code: ' + result.code + '] ' + (result.error || '') });
-          }
-          if (result && result.success === false) {
-            toolFailures.push({ tool: op, args: args, error: result.error || '未知错误' });
-          } else if (op === 'read' && result && result.success !== false) {
-            // 记录本次读过的文件（项目内相对路径），供规则注入
-            const rel = toProjectRelPath((args as any) && (args as any).filePath, projectDir);
-            if (rel) readFiles.push(rel);
-          }
-        } catch (err: any) {
-          result = { success: false, error: '工具 ' + op + ' 执行异常: ' + (err.message || String(err)) };
-          toolFailures.push({ tool: op, args: args, error: result.error });
+      // 统一走 registry.execute()——它是跨工具护栏（计划只读等）的唯一收口。
+      // 此前这里直接 tool.execute()，护栏放在 registry 就会被 AI 主路径绕过。
+      // （未知工具在 registry 里返回"未找到工具"，与原"未知工具"文案等价，错误仍走下面的失败分支）
+      try {
+        result = await this.registry.execute(op, Object.assign({}, settings || {}, args, { projectDir, currentWindowId: windowId }));
+        // 稳定的机器可路由错误码渲染进回传文本：模型按码分流，不必靠猜中文文案。
+        // 有码时格式为 `[error code: X] 原文…`，与 src/prompt/discipline.md 的「失败分流」表对应。
+        if (result && result.success === false && result.code) {
+          result = Object.assign({}, result, { error: '[error code: ' + result.code + '] ' + (result.error || '') });
         }
+        if (result && result.success === false) {
+          toolFailures.push({ tool: op, args: args, error: result.error || '未知错误' });
+        } else if (op === 'read' && result && result.success !== false) {
+          // 记录本次读过的文件（项目内相对路径），供规则注入
+          const rel = toProjectRelPath((args as any) && (args as any).filePath, projectDir);
+          if (rel) readFiles.push(rel);
+        }
+      } catch (err: any) {
+        result = { success: false, error: '工具 ' + op + ' 执行异常: ' + (err.message || String(err)) };
+        toolFailures.push({ tool: op, args: args, error: result.error });
       }
       if (isLongTask) longTaskRunning = Math.max(0, longTaskRunning - 1);
       lastActivity = Date.now(); // 工具返回后也续命

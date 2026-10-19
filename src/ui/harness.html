@@ -832,8 +832,13 @@
   var planState = null;
   function planKeyOf(sid) { return PLAN_KEY + (sid ? ':' + sid : ''); }
   function planKey() { return planKeyOf(currentSessionId); }
+  /** 上报计划阶段到主进程（034 只读护栏的数据源；失败静默，不影响 UI） */
+  function reportPlanPhase() {
+    try { if (api.reportPlanPhase) api.reportPlanPhase(planState ? planState.phase : 'off'); } catch (e) { /* ignore */ }
+  }
   function savePlanState() {
     try { localStorage.setItem(planKey(), planState ? JSON.stringify(planState) : 'null'); } catch (e) { /* ignore */ }
+    reportPlanPhase();
   }
   function loadPlanState() {
     try { planState = JSON.parse(localStorage.getItem(planKey()) || 'null'); } catch (e) { planState = null; }
@@ -844,6 +849,8 @@
       if (typeof planState.noProgress !== 'number') planState.noProgress = 0;
       if (typeof planState.round !== 'number') planState.round = 0;
     }
+    // 主进程镜像是内存态：页面重载/会话切换后必须重新同步一次
+    reportPlanPhase();
   }
   function planTodos() { return planBySession[currentSessionId] || []; }
   /** 计划是否有未完成步骤（pending / in_progress） */

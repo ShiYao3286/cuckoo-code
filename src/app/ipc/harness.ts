@@ -20,6 +20,7 @@ import { getProvider } from '../../providers/registry.js';
 import { resetTodosCache } from './tool.js';
 import { cdpAttach } from './cdp-attach.js';
 import { initProject } from '../../session/project-context.js';
+import { setPlanPhase } from '../../infra/plan-mode.js';
 
 const require = createRequire(import.meta.url);
 const { ipcMain } = require('electron');
@@ -333,6 +334,16 @@ function registerHarnessIpc(): void {
     if (!ctx || !ctx.win || ctx.win.isDestroyed()) return;
     (ctx.win as any).__ckHarnessBusy = busy;
     try { ctx.win.webContents.send('shell-harness-busy', { busy: busy }); } catch (_) { /* ignore */ }
+  });
+
+  // 计划模式阶段上报（034）：harness 的 planState 变化时同步到主进程镜像，
+  // write/edit/deleteFile 据此在 draft/confirm 阶段拒绝写操作。
+  // 键用 sessionStore.currentSessionId——与发给工具的 settings.sessionId 同源（同一 URL 提取）。
+  ipcMain.on('harness-plan-phase', (event: any, payload: any) => {
+    const ctx = findContext(event.sender);
+    if (!ctx) return;
+    const sid = ctx.sessionStore ? ctx.sessionStore.state.currentSessionId : null;
+    try { setPlanPhase(sid, payload && payload.phase); } catch (_) { /* ignore */ }
   });
 
   // 查询当前状态（首页且未选项目目录 → 需初始化）

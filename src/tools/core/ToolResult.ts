@@ -53,6 +53,8 @@ const ToolErrorCode = {
   NOT_FOUND: 'NOT_FOUND',
   /** 参数非法 */
   INVALID_ARGS: 'INVALID_ARGS',
+  /** 计划模式草稿/待确认阶段禁止写操作 */
+  PLAN_READ_ONLY: 'PLAN_READ_ONLY',
 } as const;
 
 export { ToolResult, ToolErrorCode };

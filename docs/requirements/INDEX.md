@@ -37,5 +37,6 @@
 | 031 | feature | [Windows 绿色版（zip 解压即用）](./031-portable-win-zip.md) | review | feat/031-portable-win-zip | 2026-10-19 |
 | 032 | fix | [护栏加固（write 版本比对 / 内容指纹 / 删除护栏 / 长输出落盘 / config 缓存）](./032-guard-hardening.md) | review | fix/032-guard-hardening | 2026-10-19 |
 | 033 | feature | [重复工具调用检测与提醒（移植 DSH repeat-tool-reminder）](./033-repeat-call-guard.md) | review | feat/033-repeat-call-guard | 2026-10-19 |
+| 034 | feature | [计划模式只读强制（草稿/待确认期拒绝副作用工具）](./034-plan-read-only-guard.md) | review | feat/034-plan-read-only-guard | 2026-10-19 |
 
-共 32 个需求。
+共 33 个需求。

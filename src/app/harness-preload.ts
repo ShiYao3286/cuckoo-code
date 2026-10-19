@@ -37,6 +37,8 @@ const harnessAPI = {
   },
   /** 忙状态通知（生成中= true，用于禁用侧栏对话切换） */
   setBusy: (busy: boolean) => ipcRenderer.send('harness-set-busy', { busy: !!busy }),
+  /** 上报计划模式阶段（034：主进程据此在草稿/待确认期拦截写操作） */
+  reportPlanPhase: (phase: string) => ipcRenderer.send('harness-plan-phase', { phase: String(phase || 'off') }),
   /** 页面就绪通知（可选，用于同步初始状态） */
   ready: () => ipcRenderer.send('harness-ready'),
   // ========== 主题（跟随 Cuckoo 主题系统）==========
