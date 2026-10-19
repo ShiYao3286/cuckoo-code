@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Cuckoo 插件系统 - UI 扩展运行时
  *
  * 加载插件的 ui/*.js，把 UI 扩展注入页面。
@@ -206,6 +206,24 @@ function attachUi(ctx: any, pluginName: string): void {
       const api = (window as any).electronAPI;
       if (api && typeof api.overlayHtml === 'function') return api.overlayHtml(html);
       return Promise.resolve({ success: false, error: 'overlayHtml 不可用' });
+    },
+    /**
+     * 交互模式（需求 037）
+     *
+     * 默认 overlay 是纯展示层：窗口 focusable=false + 鼠标全穿透，
+     * 所以 document.hasFocus() 恒为 false、点击/键盘/IME 都进不来（实测确认）。
+     * 需要输入或点击的插件 UI（表单/编辑器/写作台）必须先调：
+     *
+     *   await ctx.ui.overlay.setInteractive(true)
+     *
+     * 撤下该限制后窗口可聚焦、鼠标不穿透。用完后调传 false 恢复桌宠形态。
+     */
+    setInteractive: (interactive: boolean) => {
+      const api = (window as any).electronAPI;
+      if (api && typeof api.overlaySetInteractive === 'function') {
+        return api.overlaySetInteractive(!!interactive);
+      }
+      return Promise.resolve({ success: false, error: 'overlaySetInteractive 不可用' });
     },
   };
 

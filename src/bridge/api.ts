@@ -151,6 +151,13 @@ let electronAPI: any = {
   overlayEval: (code: string) => ipcRenderer.invoke('plugin-overlay-eval', { code }),
   /** 插件覆盖层：设置覆盖层 HTML */
   overlayHtml: (html: string) => ipcRenderer.invoke('plugin-overlay-html', { html }),
+  /**
+   * 插件覆盖层：交互模式开关（需求 037）
+   * 默认覆盖层不可聚焦且鼠标穿透（桌宠语义）；传 true 后才能接收点击/键盘/IME。
+   */
+  overlaySetInteractive: (interactive: boolean) => {
+    return ipcRenderer.invoke('plugin-overlay-set-interactive', { interactive: !!interactive });
+  },
   /** 注入代码到主世界（主进程 webContents.executeJavaScript） */
   injectMainWorld: (code: string) => {
     return ipcRenderer.invoke('plugin-inject-main-world', { code });

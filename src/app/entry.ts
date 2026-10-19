@@ -192,6 +192,54 @@ function createWindow(profile: any) {
   let overlayWin: any = null;
   (mainWindow as any).__ckOverlayView = null;  // 兼容旧引用名（值为 overlayWin）
   (mainWindow as any).__ckEnsureOverlay = () => ensureOverlayView();
+
+  /**
+   * 覆盖层「交互模式」开关（需求 037）
+   *
+   * 背景：overlay 窗口原本是 focusable: false + setIgnoreMouseEvents(true) 的纯展示层
+   * （为桌宠设计：不该抢键盘焦点、鼠标要穿透到 AI 页面）。
+   * 但实测（CDP 验证）该配置下 document.hasFocus() 恒为 false、focus 事件不触发，
+   * 于是**任何需要输入/点击的插件 UI 都做不了**（表单、编辑器、写作台…）。
+   *
+   * 交互模式 = 撤销上述两项限制，让窗口能获得系统焦点与鼠标事件：
+   *   - setFocusable(true)：窗口可被激活，键盘/IME 才能进来
+   *   - setIgnoreMouseEvents(false)：鼠标不再穿透（点击落到插件 UI 上）
+   *   - focus()：立即抢焦点（否则要点一下才开始）
+   *
+   * 默认 false，桌宠等现有插件行为不变。
+   * 交互模式下主进程的穿透轮询要暂停（否则会把 setIgnoreMouseEvents 改回 true，抢走刚才的输入）。
+   */
+  let overlayInteractive = false;
+  (mainWindow as any).__ckOverlayInteractive = false;
+
+  const setOverlayInteractive = (on: boolean): { success: boolean; interactive: boolean; error?: string } => {
+    try {
+      if (!overlayWin || (overlayWin.isDestroyed && overlayWin.isDestroyed())) {
+        return { success: false, interactive: overlayInteractive, error: '覆盖层未创建' };
+      }
+      overlayInteractive = !!on;
+      (mainWindow as any).__ckOverlayInteractive = overlayInteractive;
+      if (overlayInteractive) {
+        // 先解除穿透，再允许聚焦，最后主动抢焦点
+        try { overlayWin.setIgnoreMouseEvents(false); } catch (_) {}
+        try { overlayWin.setFocusable(true); } catch (_) {}
+        try { overlayWin.showInactive(); } catch (_) {}
+        try { overlayWin.focus(); } catch (_) {}
+      } else {
+        // 恢复桌宠形态：不可聚焦 + 全穿透
+        try { overlayWin.setFocusable(false); } catch (_) {}
+        try { overlayWin.setIgnoreMouseEvents(true, { forward: true }); } catch (_) {}
+        // 焦点交还主窗口，避免键盘输入被一个"不可聚焦"的窗口吞掉
+        try { mainWindow.focus(); } catch (_) {}
+      }
+      console.log('[Cuckoo Overlay] 交互模式: ' + (overlayInteractive ? '开' : '关'));
+      return { success: true, interactive: overlayInteractive };
+    } catch (err: any) {
+      return { success: false, interactive: overlayInteractive, error: err && err.message ? err.message : String(err) };
+    }
+  };
+  (mainWindow as any).__ckSetOverlayInteractive = setOverlayInteractive;
+
   const ensureOverlayView = (): any => {
     if (overlayWin && !overlayWin.isDestroyed()) return overlayWin;
     const ow = new BrowserWindow({
@@ -203,7 +251,9 @@ function createWindow(profile: any) {
       minimizable: false,
       maximizable: false,
       skipTaskbar: true,
-      focusable: false,           // 不抢焦点
+      // 默认不抢焦点（桌宠语义）。需要输入的插件调 overlay.setInteractive(true)
+      // 后会通过 setFocusable(true) 动态打开（见 setOverlayInteractive）。
+      focusable: false,
       show: false,
       hasShadow: false,
       webPreferences: {
@@ -235,7 +285,15 @@ function createWindow(profile: any) {
     ));
     ow.webContents.on('did-finish-load', () => {
       console.log('[Cuckoo Overlay] 页面加载完成');
-      try { ow.showInactive(); } catch (_) {}
+      // 交互模式下不能用 showInactive（它不激活窗口，焦点会丢）；
+      // 重载后也要重新抢焦点，否则页面刷新一次输入就断。
+      if (overlayInteractive) {
+        try { ow.setFocusable(true); } catch (_) {}
+        try { ow.show(); } catch (_) {}
+        try { ow.focus(); } catch (_) {}
+      } else {
+        try { ow.showInactive(); } catch (_) {}
+      }
     });
     setTimeout(() => { try { (mainWindow as any).__ckLayout && (mainWindow as any).__ckLayout(); } catch (_) {} }, 50);
     return ow;

@@ -738,6 +738,22 @@ function registerPluginIpc(): void {
     }
   });
 
+  // ===== 覆盖层交互模式（需求 037）=====
+  // 默认 overlay 是纯展示层（focusable:false + 全穿透），任何需要输入的插件 UI 都用不了。
+  // 插件调 setInteractive(true) 后：可聚焦 + 鼠标不穿透 + 主动抢焦点。
+  ipcMain.handle('plugin-overlay-set-interactive', async (event: any, { interactive }: any = {}) => {
+    try {
+      const ctx: any = windowState.getContextByWebContents(event.sender)
+        || (windowState.getMainContext ? windowState.getMainContext() : null);
+      const fn = (ctx && ctx.win && ctx.win.__ckSetOverlayInteractive)
+        || (windowState.getMainWindow ? (windowState.getMainWindow() as any).__ckSetOverlayInteractive : null);
+      if (typeof fn !== 'function') return { success: false, error: '窗口未挂交互模式切换器' };
+      return fn(!!interactive);
+    } catch (err: any) {
+      return { success: false, error: err && err.message ? err.message : String(err) };
+    }
+  });
+
   // ===== 插件覆盖层（overlay）：Cuckoo 自己的透明置顶视图，插件 UI 住这里 =====
   // 让插件"不注入 AI 页面"，从根上避免污染第三方页面。
   const findOverlayView = (event: any): any => {
@@ -772,6 +788,12 @@ function registerPluginIpc(): void {
   setInterval(() => {
     try {
       if (!overlayWinRef || (overlayWinRef.isDestroyed && overlayWinRef.isDestroyed())) return;
+      // 交互模式下绝不能动穿透开关：插件正在接受点击/键盘输入，
+      // 这里若把 setIgnoreMouseEvents 改回 true，输入会立刻被抢走（需求 037）。
+      try {
+        const mw: any = windowState.getMainWindow ? windowState.getMainWindow() : null;
+        if (mw && mw.__ckOverlayInteractive) return;
+      } catch (_) {}
       const { screen } = require('electron');
       const pt = screen.getCursorScreenPoint();
       if (pt.x === lastPtX && pt.y === lastPtY) return;  // 鼠标没动 → 跳过
