@@ -103,8 +103,31 @@ GPT 的 Dreaming V3 给出了另一种答案：**用 LLM 把历史对话合成�
 | # | 缺口 | 位置 | 工作量 |
 |---|---|---|---|
 | 1 | 读不到对话正文 | `compaction.ts` 的 `getMessagesFromIndexedDB` 只取了 3 个字段 | 小 |
-| 2 | 不知道 `content` 在 IDB 里的确切结构 | 需先 dump 一次真实数据 | 小 |
+| 2 | 不知道 `content` 在 IDB 里的确切结构 | 已探明 store/key，**字段名待确认**（见下） | 小 |
 | 3 | 没有增量游标 | `memories.json` 加字段 | 小 |
+
+### IDB 探针结论（2026-10-19）
+
+已在真实数据上验证（复制 LevelDB 文件 + 读 MANIFEST）：
+
+| 项 | 结论 |
+|---|---|
+| 库名 | `deepseek-chat` |
+| store 名 | **`history-message`**（MANIFEST 里确认） |
+| key | **sessionId（UUID）**，如 `c336c9ec-b38f-441f-9e64-2f63648afa40` |
+| value 结构 | `{ data: { chat_messages: [...], chat_session: { current_message_id } } }`（现有代码已在使用） |
+| 单个消息已知字段 | `message_id`（number）、`role`（string）、`parent_id` |
+| **待确认** | 消息正文的字段名（`content`? `text`? 嵌套结构?） |
+
+**注意**：LevelDB 数据块经 **Snappy 压缩**，直接读 `.ldb` 文件搜不到明文。
+必须通过浏览器运行时（`indexedDB` API）读取，不能离线解析文件。
+
+**为什么这次没能直接确认 content 字段**：新开窗口共享 partition 后跳转到了 `/sign_in`，
+该页面上下文里 `deepseek-chat` 库的 store 未初始化（`objectStoreNames` 为空）。
+需要在**已登录且已进入会话页**的主窗口里执行才能读到。
+
+**下一步**：实现时先加一个临时探针——在 bridge 层读一条消息并 `console.log(Object.keys(m))`，
+从应用日志确认字段名，再写正式解析逻辑。这是 5 分钟的活。
 
 ## 验收标准
 
