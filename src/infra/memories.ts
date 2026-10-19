@@ -20,6 +20,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { isMemoriesEnabled } from './config.js';
+import { readJsonFile } from './json-file.js';
 
 /** 全局作用域的固定值 */
 const SCOPE_USER = 'user';
@@ -88,7 +89,8 @@ function readAll(): Memory[] {
   const file = getMemoriesFile();
   try {
     if (fs.existsSync(file)) {
-      const raw = JSON.parse(fs.readFileSync(file, 'utf-8'));
+      // readJsonFile 会剥掉 UTF-8 BOM（Windows 编辑器常见，否则 JSON.parse 直接失败）
+      const raw = readJsonFile(file);
       if (Array.isArray(raw)) {
         return raw.map(normalizeMemory).filter(Boolean) as Memory[];
       }

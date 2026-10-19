@@ -7,6 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { readJsonFile } from './json-file.js';
 
 export interface UserConfig {
   /** 是否启用用户记忆功能（默认 false） */
@@ -61,7 +62,8 @@ function readConfig(): UserConfig {
         && configCache.mtimeMs === st.mtimeMs && configCache.size === st.size) {
         return configCache.value;
       }
-      const raw = JSON.parse(fs.readFileSync(file, 'utf-8'));
+      // readJsonFile 会剥掉 UTF-8 BOM（Windows 编辑器常见，否则 JSON.parse 直接失败）
+      const raw = readJsonFile(file);
       if (raw && typeof raw === 'object') {
         const value: UserConfig = {
           memoriesEnabled: raw.memoriesEnabled === true,
