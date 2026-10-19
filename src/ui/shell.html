@@ -5369,9 +5369,10 @@
         const o = String(oldP[k] || "").trim();
         const n = String(newP[k] || "").trim();
         if (o === n) continue;
+        const truncate = (s) => s.length > 150 ? s.slice(0, 150) + "..." : s;
         lines.push("\u3010" + label + "\u3011");
-        if (o) lines.push("  \u65E7\uFF1A" + o);
-        if (n) lines.push("  \u65B0\uFF1A" + n);
+        if (o) lines.push("  \u65E7\uFF1A" + truncate(o));
+        if (n) lines.push("  \u65B0\uFF1A" + truncate(n));
         lines.push("");
       }
       if (lines.length <= 4) {

@@ -222,9 +222,11 @@ function showConsolidationPreview(preview: any): Promise<boolean> {
       const o = String(oldP[k] || '').trim();
       const n = String(newP[k] || '').trim();
       if (o === n) continue;
+      // 截断过长的文本，避免弹窗被撑爆
+      const truncate = (s: string) => s.length > 150 ? s.slice(0, 150) + '...' : s;
       lines.push('【' + label + '】');
-      if (o) lines.push('  旧：' + o);
-      if (n) lines.push('  新：' + n);
+      if (o) lines.push('  旧：' + truncate(o));
+      if (n) lines.push('  新：' + truncate(n));
       lines.push('');
     }
     if (lines.length <= 4) {
@@ -232,7 +234,7 @@ function showConsolidationPreview(preview: any): Promise<boolean> {
     }
     lines.push('确认写入？');
 
-    // 用 ckConfirm 展示（简化；完整 diff UI 可后续迭代）
+    // 用 ckConfirm 展示
     ckConfirm(lines.join('\n')).then(resolve);
   });
 }
