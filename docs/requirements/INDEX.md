@@ -39,5 +39,6 @@
 | 033 | feature | [重复工具调用检测与提醒（移植 DSH repeat-tool-reminder）](./033-repeat-call-guard.md) | review | feat/033-repeat-call-guard | 2026-10-19 |
 | 034 | feature | [计划模式只读强制（草稿/待确认期拒绝副作用工具）](./034-plan-read-only-guard.md) | review | feat/034-plan-read-only-guard | 2026-10-19 |
 | 035 | fix | [记忆可靠性——作用域 / 原子写入 / 可查询删除](./035-memories-reliability.md) | review | feat/035-memories-scope-atomic | 2026-10-19 |
+| 036 | feature | [用户画像自动整理（LLM 合成）](./036-memory-consolidation.md) | draft | feat/036-memory-consolidation | 2026-10-19 |
 
-共 34 个需求。
+共 35 个需求。
