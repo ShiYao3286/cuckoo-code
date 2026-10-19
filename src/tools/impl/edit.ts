@@ -1,8 +1,10 @@
 import { Tool } from '../core/Tool.js';
 import type { ToolApiMeta } from '../core/Tool.js';
-import { ToolResult } from '../core/ToolResult.js';
+import { ToolResult, ToolErrorCode } from '../core/ToolResult.js';
 import { normalizeLineEndings, detectLineEndings } from '../../infra/eol.js';
 import { isProtectedPath } from '../../infra/protected-paths.js';
+import { observe, guardEdit, statVersion } from '../runtime/fs-observation.js';
+import { isFsGuardEnabled } from '../../infra/config.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -214,6 +216,7 @@ class EditTool extends Tool {
 
   async execute(params: any): Promise<ToolResult> {
     const { filePath, oldString, newString, replaceAll, dryRun, projectDir } = params;
+    const sessionId = params && params.sessionId;
 
     try {
       const input = parseEditArgs(filePath, oldString, newString, replaceAll, dryRun);
@@ -229,15 +232,29 @@ class EditTool extends Tool {
 
       // 受保护路径检查（禁止改快照/记忆数据）
       const guard = isProtectedPath(resolvedPath);
-      if (guard) return ToolResult.error('编辑失败: 目标路径受保护 — ' + guard);
+      if (guard) return ToolResult.error('编辑失败: 目标路径受保护 — ' + guard, ToolErrorCode.PROTECTED_PATH);
 
       // 文件存在性与类型检查
       if (!fs.existsSync(resolvedPath)) {
-        return ToolResult.error('文件不存在: ' + resolvedPath);
+        return ToolResult.error('文件不存在: ' + resolvedPath, ToolErrorCode.NOT_FOUND);
       }
       const stat = fs.statSync(resolvedPath);
       if (!stat.isFile()) {
-        return ToolResult.error('不是文件: ' + resolvedPath);
+        return ToolResult.error('不是文件: ' + resolvedPath, ToolErrorCode.INVALID_ARGS);
+      }
+
+      // ===== read-before-edit 护栏（移植 DSH fs-observation-policy 语义）=====
+      // 必须在真正读内容之前判定：未读过 / 读过后文件又变了，都拒绝执行。
+      const versionBefore = statVersion(resolvedPath);
+      if (isFsGuardEnabled() && versionBefore) {
+        const d = guardEdit(sessionId, resolvedPath, input.filePath, versionBefore);
+        if (!d.ok) {
+          return ToolResult.error(
+            '编辑被拒绝: ' + (d.code === 'STALE_VERSION' ? '文件在你上次读取后已被改动。' : '本会话尚未读过该文件。')
+              + '文件路径: ' + resolvedPath + '\n下一步: ' + d.hint,
+            d.code
+          );
+        }
       }
 
       // 读取原始内容，在 LF 世界匹配（oldString / newString 归一成 LF）
@@ -248,13 +265,16 @@ class EditTool extends Tool {
 
       const occurrences = countOccurrences(content, oldNorm);
       if (occurrences === 0) {
-        return ToolResult.error('未找到要替换的文本，请检查 oldString 是否与文件内容精确匹配。文件路径: ' + resolvedPath);
+        return ToolResult.error('未找到要替换的文本，请检查 oldString 是否与文件内容精确匹配。文件路径: ' + resolvedPath
+          + '\n下一步: read("' + input.filePath + '") 查看当前实际内容，再逐字复制要替换的片段（注意缩进与空行）。',
+          ToolErrorCode.NO_MATCH);
       }
       if (occurrences > 1 && !input.replaceAll) {
-        return ToolResult.error('oldString 在文件中出现 ' + occurrences + ' 次。若要全部替换，请设置 replaceAll: true；若只替换其中一处，请提供更长的唯一片段（更多上下文）。');
+        return ToolResult.error('oldString 在文件中出现 ' + occurrences + ' 次。若要全部替换，请设置 replaceAll: true；若只替换其中一处，请提供更长的唯一片段（更多上下文）。',
+          ToolErrorCode.AMBIGUOUS_MATCH);
       }
 
-      // dry-run：只预览，不写文件
+      // dry-run：只预览，不写文件（不改状态，故也不更新观察版本）
       if (input.dryRun) {
         console.log('[EditTool] dry-run 预览:', resolvedPath, '将替换', occurrences, '处');
         return ToolResult.success(formatDryRunOutput(input.filePath, input.oldString, input.newString, occurrences, input.replaceAll));
@@ -263,6 +283,10 @@ class EditTool extends Tool {
       // 写回：只改写命中区间，未编辑区域的行尾原样保留
       const newContent = applyEditPreservingEol(raw, oldNorm, newNorm, input.replaceAll, detectLineEndings(raw));
       fs.writeFileSync(resolvedPath, newContent, 'utf-8');
+
+      // 本会话自己改过的文件视为已观察（允许连续编辑，不必每次重读）
+      const versionAfter = statVersion(resolvedPath);
+      if (versionAfter) observe(sessionId, resolvedPath, versionAfter);
 
       console.log('[EditTool] 已编辑:', resolvedPath, '替换', occurrences, '处');
       return ToolResult.success(formatEditOutput(input.filePath, input.replaceAll, occurrences));

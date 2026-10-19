@@ -11,10 +11,16 @@ import os from 'node:os';
 export interface UserConfig {
   /** 是否启用用户记忆功能（默认 false） */
   memoriesEnabled: boolean;
+  /**
+   * 是否启用 read-before-edit 文件观察护栏（默认 true）。
+   * 关闭后 edit/write 恢复无条件执行（旧行为），用于排除误伤或调试。
+   */
+  fsGuardEnabled: boolean;
 }
 
 const DEFAULT_CONFIG: UserConfig = {
   memoriesEnabled: false,
+  fsGuardEnabled: true,
 };
 
 /** 用户级目录（可用 CUCKOO_HOME 覆盖，供测试隔离） */
@@ -34,7 +40,11 @@ function readConfig(): UserConfig {
     if (fs.existsSync(file)) {
       const raw = JSON.parse(fs.readFileSync(file, 'utf-8'));
       if (raw && typeof raw === 'object') {
-        return { memoriesEnabled: raw.memoriesEnabled === true };
+        return {
+          memoriesEnabled: raw.memoriesEnabled === true,
+          // 默认开：只有显式 false 才关闭（旧配置文件无此字段时保持启用）
+          fsGuardEnabled: raw.fsGuardEnabled !== false,
+        };
       }
     }
   } catch (err: any) {
@@ -67,6 +77,16 @@ function setMemoriesEnabled(enabled: boolean): boolean {
   return writeConfig({ memoriesEnabled: enabled === true });
 }
 
+/** read-before-edit 护栏是否启用（默认启用） */
+function isFsGuardEnabled(): boolean {
+  return readConfig().fsGuardEnabled !== false;
+}
+
+/** 设置护栏开关 */
+function setFsGuardEnabled(enabled: boolean): boolean {
+  return writeConfig({ fsGuardEnabled: enabled !== false });
+}
+
 /**
  * 已启用的工具功能分组（用于注入对应的 API 契约文件 api.<feature>.d.ts）。
  * 目前仅 'memories'。
@@ -77,4 +97,9 @@ function getEnabledToolFeatures(): string[] {
   return feats;
 }
 
-export { readConfig, writeConfig, isMemoriesEnabled, setMemoriesEnabled, getEnabledToolFeatures, getConfigFile };
+export {
+  readConfig, writeConfig,
+  isMemoriesEnabled, setMemoriesEnabled,
+  isFsGuardEnabled, setFsGuardEnabled,
+  getEnabledToolFeatures, getConfigFile,
+};

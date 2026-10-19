@@ -33,5 +33,6 @@
 | 027 | feature | [用户记忆系统](./027-memories.md) | review | feat/024-memories | 2026-10-15 |
 | 028 | feature | [用户记忆功能默认关闭 + 开关](./028-memories-default-off.md) | review | feat/028-memories-default-off | 2026-10-15 |
 | 029 | feature | [Agent 工作纪律提示词 + goal 受阻/防重复（DSH 经验移植）](./029-agent-discipline-prompts.md) | doing | feat/029-agent-discipline-prompts | 2026-10-19 |
+| 030 | feature | [read-before-edit 护栏 + 工具错误码 + 纪律改造（移植 DSH 机制）](./030-fs-observation-guard.md) | doing | feat/030-fs-observation-guard | 2026-10-19 |
 
-共 28 个需求。
+共 29 个需求。

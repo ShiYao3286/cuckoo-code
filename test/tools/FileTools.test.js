@@ -7,10 +7,24 @@ import { DeleteFileTool } from '../../src/tools/impl/delete-file.js';
 import { WriteTool } from '../../src/tools/impl/write.js';
 import { ReadTool } from '../../src/tools/impl/read.js';
 import { EditTool } from '../../src/tools/impl/edit.js';
+import { clearAll } from '../../src/tools/runtime/fs-observation.js';
 
 const tmpRoot = path.join(process.cwd(), 'test', 'tmp', 'filetools');
 
+/**
+ * 写文件并先 read 一遍。
+ * read-before-edit 护栏（030）要求 edit 前必须已观察该文件，
+ * 这里复刻 AI 的真实动作序列：write → read → edit。
+ */
+async function seedAndRead(name, content) {
+  fs.writeFileSync(path.join(tmpRoot, name), content);
+  const r = await new ReadTool().execute({ filePath: name, projectDir: tmpRoot });
+  assert.strictEqual(r.success, true, '前置 read 应成功');
+  return r;
+}
+
 beforeEach(() => {
+  clearAll();
   fs.rmSync(tmpRoot, { recursive: true, force: true });
   fs.mkdirSync(tmpRoot, { recursive: true });
 });
@@ -87,7 +101,7 @@ test('ReadTool 文件不存在', async () => {
 });
 
 test('EditTool 成功替换', async () => {
-  fs.writeFileSync(path.join(tmpRoot, 'd.txt'), 'hello world');
+  await seedAndRead('d.txt', 'hello world');
   const tool = new EditTool();
   const r = await tool.execute({ filePath: 'd.txt', oldString: 'world', newString: 'cuckoo', projectDir: tmpRoot });
   assert.strictEqual(r.success, true);
@@ -96,23 +110,25 @@ test('EditTool 成功替换', async () => {
 });
 
 test('EditTool oldString 不存在', async () => {
-  fs.writeFileSync(path.join(tmpRoot, 'd.txt'), 'abc');
+  await seedAndRead('d.txt', 'abc');
   const tool = new EditTool();
   const r = await tool.execute({ filePath: 'd.txt', oldString: 'zzz', newString: 'y', projectDir: tmpRoot });
   assert.strictEqual(r.success, false);
   assert.match(r.error, /未找到要替换的文本/);
+  assert.strictEqual(r.code, 'NO_MATCH', '应带可路由错误码');
 });
 
 test('EditTool 多次匹配需要 replace_all', async () => {
-  fs.writeFileSync(path.join(tmpRoot, 'd.txt'), 'x x x');
+  await seedAndRead('d.txt', 'x x x');
   const tool = new EditTool();
   const r = await tool.execute({ filePath: 'd.txt', oldString: 'x', newString: 'y', projectDir: tmpRoot });
   assert.strictEqual(r.success, false);
   assert.match(r.error, /出现 3 次/);
+  assert.strictEqual(r.code, 'AMBIGUOUS_MATCH');
 });
 
 test('EditTool replace_all', async () => {
-  fs.writeFileSync(path.join(tmpRoot, 'd.txt'), 'x x x');
+  await seedAndRead('d.txt', 'x x x');
   const tool = new EditTool();
   const r = await tool.execute({ filePath: 'd.txt', oldString: 'x', newString: 'y', replaceAll: true, projectDir: tmpRoot });
   assert.strictEqual(r.success, true);
@@ -120,7 +136,7 @@ test('EditTool replace_all', async () => {
 });
 
 test('EditTool dry-run 预览不写入', async () => {
-  fs.writeFileSync(path.join(tmpRoot, 'd.txt'), 'x x x');
+  await seedAndRead('d.txt', 'x x x');
   const tool = new EditTool();
   const r = await tool.execute({ filePath: 'd.txt', oldString: 'x', newString: 'y', replaceAll: true, dryRun: true, projectDir: tmpRoot });
   assert.strictEqual(r.success, true);
@@ -130,7 +146,7 @@ test('EditTool dry-run 预览不写入', async () => {
 });
 
 test('EditTool dry-run 唯一替换预览', async () => {
-  fs.writeFileSync(path.join(tmpRoot, 'd.txt'), 'hello world');
+  await seedAndRead('d.txt', 'hello world');
   const tool = new EditTool();
   const r = await tool.execute({ filePath: 'd.txt', oldString: 'world', newString: 'cuckoo', dryRun: true, projectDir: tmpRoot });
   assert.strictEqual(r.success, true);
@@ -140,7 +156,7 @@ test('EditTool dry-run 唯一替换预览', async () => {
 });
 
 test('EditTool dry-run 删除预览', async () => {
-  fs.writeFileSync(path.join(tmpRoot, 'd.txt'), 'remove me');
+  await seedAndRead('d.txt', 'remove me');
   const tool = new EditTool();
   const r = await tool.execute({ filePath: 'd.txt', oldString: 'remove', newString: '', dryRun: true, projectDir: tmpRoot });
   assert.strictEqual(r.success, true);

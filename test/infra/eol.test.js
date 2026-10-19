@@ -7,9 +7,22 @@ import os from 'node:os';
 import { normalizeLineEndings, detectLineEndings, restoreLineEndings } from '../../src/infra/eol.js';
 import { EditTool } from '../../src/tools/impl/edit.js';
 import { WriteTool } from '../../src/tools/impl/write.js';
+import { ReadTool } from '../../src/tools/impl/read.js';
+import { clearAll } from '../../src/tools/runtime/fs-observation.js';
 
 const CR = String.fromCharCode(13);
 const LF = String.fromCharCode(10);
+
+/**
+ * 修改已存在文件前先 read 一次。
+ * read-before-edit 护栏（030）要求：本会话必须先观察过该文件，才允许 edit / 覆盖 write。
+ * 这些用例测的是换行符策略，不是护栏，故在此把前置读补齐，保持被测行为不变。
+ */
+async function readFirst(p) {
+  clearAll();
+  const r = await new ReadTool().execute({ filePath: p });
+  assert.strictEqual(r.success, true, '前置 read 应成功: ' + r.error);
+}
 
 // ===== eol.ts 纯函数 =====
 
@@ -75,6 +88,7 @@ function countEol(s) {
 
 test('edit: 纯 CRLF 文件，LF oldString 跨行 → 成功且保持 CRLF', async () => {
   const f = tmpFile(['# t', '- a', '- b'].join(CR + LF) + CR + LF);
+  await readFirst(f);
   const tool = new EditTool();
   const r = await tool.execute({ filePath: f, oldString: '- a' + LF + '- b', newString: '- a2' + LF + '- b2' });
   assert.strictEqual(r.success, true, r.error);
@@ -85,6 +99,7 @@ test('edit: 纯 CRLF 文件，LF oldString 跨行 → 成功且保持 CRLF', asy
 
 test('edit: 纯 LF 文件 → 保持 LF', async () => {
   const f = tmpFile(['# t', '- a', '- b'].join(LF) + LF);
+  await readFirst(f);
   const tool = new EditTool();
   const r = await tool.execute({ filePath: f, oldString: '- a' + LF + '- b', newString: '- a2' + LF + '- b2' });
   assert.strictEqual(r.success, true, r.error);
@@ -96,6 +111,7 @@ test('edit: 混合文件只改命中区间，未编辑区域行尾保留（需�
   // LF 主导（5 LF / 2 CRLF）
   const content = ['# t', '- a1', '- a2', '- b1', '- b2'].join(LF) + LF + '- c1' + LF + '- d1' + CR + LF + '- d2' + CR + LF;
   const f = tmpFile(content);
+  await readFirst(f);
   const tool = new EditTool();
   const r = await tool.execute({ filePath: f, oldString: '- b1' + LF + '- b2', newString: '- b1x' + LF + '- b2x' });
   assert.strictEqual(r.success, true, r.error);
@@ -108,6 +124,7 @@ test('edit: 混合文件只改命中区间，未编辑区域行尾保留（需�
 
 test('edit: 单行编辑纯 CRLF 保持 CRLF', async () => {
   const f = tmpFile(['# t', '- a', '- b'].join(CR + LF) + CR + LF);
+  await readFirst(f);
   const tool = new EditTool();
   const r = await tool.execute({ filePath: f, oldString: '- a', newString: '- ax' });
   assert.strictEqual(r.success, true, r.error);
@@ -119,6 +136,7 @@ test('edit: 单行编辑纯 CRLF 保持 CRLF', async () => {
 test('write: 新文件用 LF', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cuckoo-eol-w-'));
   const f = path.join(dir, 'new.md');
+  // 新文件不经过护栏（护栏只拦"覆盖已存在但未读过的文件"），无需前置 read
   const tool = new WriteTool();
   const r = await tool.execute({ filePath: f, content: 'a' + CR + LF + 'b' });
   assert.strictEqual(r.success, true, r.error);
@@ -127,6 +145,7 @@ test('write: 新文件用 LF', async () => {
 
 test('write: 已有 CRLF 文件，内容跟随 CRLF', async () => {
   const f = tmpFile(['# t', '- a'].join(CR + LF) + CR + LF);
+  await readFirst(f);
   const tool = new WriteTool();
   const r = await tool.execute({ filePath: f, content: 'x' + LF + 'y' });
   assert.strictEqual(r.success, true, r.error);
@@ -137,6 +156,7 @@ test('write: 已有 CRLF 文件，内容跟随 CRLF', async () => {
 
 test('write: 已有 LF 文件，内容跟随 LF', async () => {
   const f = tmpFile(['# t', '- a'].join(LF) + LF);
+  await readFirst(f);
   const tool = new WriteTool();
   const r = await tool.execute({ filePath: f, content: 'x' + CR + LF + 'y' });
   assert.strictEqual(r.success, true, r.error);

@@ -200,6 +200,11 @@ class JsRunner {
       } else {
         try {
           result = await tool.execute(Object.assign({}, settings || {}, args, { projectDir, currentWindowId: windowId }));
+          // 稳定的机器可路由错误码渲染进回传文本：模型按码分流，不必靠猜中文文案。
+          // 有码时格式为 `[error code: X] 原文…`，与 src/prompt/discipline.md 的「失败分流」表对应。
+          if (result && result.success === false && result.code) {
+            result = Object.assign({}, result, { error: '[error code: ' + result.code + '] ' + (result.error || '') });
+          }
           if (result && result.success === false) {
             toolFailures.push({ tool: op, args: args, error: result.error || '未知错误' });
           } else if (op === 'read' && result && result.success !== false) {

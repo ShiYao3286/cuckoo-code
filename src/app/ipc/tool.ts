@@ -27,9 +27,11 @@ function registerToolIpc(): void {
     const selectedDir = store ? store.state.selectedProjectDir : null;
     const win = ctx ? ctx.win : null;
     const windowId = win && !win.isDestroyed() ? win.id : null;
+    // 会话身份：read-before-edit 观察台账按会话隔离（与 execute-js 路径保持一致）
+    const sessionId = store ? store.state.currentSessionId : null;
     try {
-      const result = await toolRegistry.execute(toolName, { ...params, projectDir: selectedDir, currentWindowId: windowId });
-      return { callId, success: result.success, data: result.data, error: result.error };
+      const result = await toolRegistry.execute(toolName, { ...params, projectDir: selectedDir, currentWindowId: windowId, sessionId });
+      return { callId, success: result.success, data: result.data, error: result.error, code: result.code || null };
     } catch (err: any) {
       return { callId, success: false, error: err.message };
     }

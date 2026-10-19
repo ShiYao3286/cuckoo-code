@@ -1,8 +1,10 @@
 import { Tool } from '../core/Tool.js';
 import type { ToolApiMeta } from '../core/Tool.js';
-import { ToolResult } from '../core/ToolResult.js';
+import { ToolResult, ToolErrorCode } from '../core/ToolResult.js';
 import { normalizeLineEndings, detectLineEndings, restoreLineEndings } from '../../infra/eol.js';
 import { isProtectedPath } from '../../infra/protected-paths.js';
+import { observe, guardWrite, statVersion } from '../runtime/fs-observation.js';
+import { isFsGuardEnabled } from '../../infra/config.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -87,6 +89,7 @@ class WriteTool extends Tool {
 
   async execute(params: any): Promise<ToolResult> {
     const { filePath, content, projectDir } = params;
+    const sessionId = params && params.sessionId;
 
     try {
       const input = parseWriteArgs(filePath, content);
@@ -102,19 +105,31 @@ class WriteTool extends Tool {
 
       // 受保护路径检查（禁止改快照/记忆数据）
       const guard = isProtectedPath(resolvedPath);
-      if (guard) return ToolResult.error('写入失败: 目标路径受保护 — ' + guard);
+      if (guard) return ToolResult.error('写入失败: 目标路径受保护 — ' + guard, ToolErrorCode.PROTECTED_PATH);
 
       // 检查路径是否为目录
       if (fs.existsSync(resolvedPath)) {
         const stat = fs.statSync(resolvedPath);
         if (stat.isDirectory()) {
-          return ToolResult.error('写入失败: 目标路径是目录，不是文件: ' + resolvedPath);
+          return ToolResult.error('写入失败: 目标路径是目录，不是文件: ' + resolvedPath, ToolErrorCode.INVALID_ARGS);
         }
       }
 
       // 判断是 create 还是 update（最小移植不读 before/after）
       const exists = fs.existsSync(resolvedPath);
       const operation = exists ? 'update' : 'create';
+
+      // ===== write 护栏（移植 DSH fs-observation-policy 语义）=====
+      // 只拦"覆盖一个已存在、本会话从没读过的文件"——新建不受影响。
+      if (isFsGuardEnabled()) {
+        const d = guardWrite(sessionId, resolvedPath, input.filePath, exists);
+        if (!d.ok) {
+          return ToolResult.error(
+            '写入被拒绝: 该文件已存在，但本会话尚未读过它，整份覆盖有风险。文件路径: ' + resolvedPath + '\n下一步: ' + d.hint,
+            d.code
+          );
+        }
+      }
 
       // 换行符策略（dsh 方案）：
       //  - 已有文件：跟随其主导换行符（不改变文件风格）
@@ -134,6 +149,10 @@ class WriteTool extends Tool {
 
       // 写文件
       fs.writeFileSync(resolvedPath, finalContent, 'utf-8');
+
+      // 本会话自己写过的文件视为已观察（允许后续 edit/write，不必每次重读）
+      const versionAfter = statVersion(resolvedPath);
+      if (versionAfter) observe(sessionId, resolvedPath, versionAfter);
 
       console.log('[WriteTool] ' + (operation === 'create' ? 'Created' : 'Updated') + ':', resolvedPath);
       return ToolResult.success(formatWriteOutput(input.filePath, operation));
