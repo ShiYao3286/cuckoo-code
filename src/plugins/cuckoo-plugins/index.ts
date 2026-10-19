@@ -76,9 +76,14 @@ async function loadPluginFromDir(dir: string, registry: any, host?: CuckooHost):
   const names: string[] = [];
   for (const def of tools) {
     if (!def || typeof def.name !== 'string') continue;
-    registry.register(new DshPluginTool(def));
-    loadedPluginTools.add(def.name);
-    names.push(def.name);
+    try {
+      // 默认拒绝同名覆盖：插件工具撞内置工具名时跳过，不替换可用工具（见需求 030 末尾安全问题）
+      registry.register(new DshPluginTool(def));
+      loadedPluginTools.add(def.name);
+      names.push(def.name);
+    } catch (err: any) {
+      console.warn('[plugin] 跳过冲突工具 "' + def.name + '"（' + pluginName + '）: ' + (err && err.message ? err.message : err));
+    }
   }
   return { pluginName, tools: names };
 }

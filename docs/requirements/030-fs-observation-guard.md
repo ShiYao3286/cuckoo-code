@@ -98,7 +98,7 @@ DSH 用三个瀑布事件（`fs/write-intent` / `fs/edit-intent` / `fs/observed`
 - 版本代理用 mtime 而非内容哈希：同毫秒内等长原地修改会漏判。
 - 台账不落盘：应用重启后模型第一次编辑需重新 read（符合预期，但可视需要加持久化）。
 - `JsRunner` 的"同一脚本内重复调用检测"可复用它已有的 `toolFailures` 收集做，留待 A 项。
-- **cuckoo DSH 兼容层的两个真 bug**（本轮实测发现，未修，建议单独提给上游或后续处理）：
-  1. `loader.ts:251` 传 `plugin.apply(ctx, {})`，应改为解析插件导出的 `Config`（`z.object().parse({})`）填默认值
-  2. 简化 `ctx.fs` 缺 `stat`，任何依赖文件元信息的 DSH 工具会直接崩
-  3. （安全）插件工具与内置工具同名时 `ToolRegistry.register` 静默覆盖——建议改为拒绝或改名前缀
+- **cuckoo DSH 兼容层的三个真 bug**（本轮实测发现）→ ✅ 已于 2026-10-19 修复（NEXT-PLAN T1）：
+  1. `loader.ts:251` 传 `plugin.apply(ctx, {})` → 改为 `resolvePluginConfig()` 解析插件导出的 `Config.parse()` 填默认值（parse 抛错时回退 `{}`）
+  2. 简化 `ctx.fs` 缺 `stat` → 补 `stat()`（type/size/mtimeMs/mtime/isFile/isDirectory/path/key）与 `exists()`
+  3. （安全）插件工具与内置工具同名时 `ToolRegistry.register` 静默覆盖 → 默认**拒绝**覆盖（抛错），确需覆盖须显式 `allowOverride: true`；插件加载处逐工具 try/catch，冲突的跳过并警告

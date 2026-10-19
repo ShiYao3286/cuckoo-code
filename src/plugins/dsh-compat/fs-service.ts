@@ -35,6 +35,33 @@ function createFs(getProjectDir: () => string | null): any {
       return { path: a, key: a };
     },
 
+    /**
+     * 文件元信息。
+     * DSH 的 fs.stat 返回 type/size/mtime 等；此前 Cuckoo 没实现，
+     * 导致任何依赖元信息的 DSH 工具直接报 "ctx.fs.stat is not a function"（见需求 030 末尾）。
+     * 字段尽量给别名（mtime + mtimeMs、type + isFile/isDirectory），提高兼容性。
+     */
+    async stat(target: FsTarget, _signal?: any): Promise<any> {
+      const st = fs.statSync(target.path);
+      const type = st.isDirectory() ? 'dir' : (st.isFile() ? 'file' : 'other');
+      return {
+        type,
+        size: st.size,
+        mtimeMs: st.mtimeMs,
+        mtime: Math.floor(st.mtimeMs / 1000),
+        ctimeMs: st.ctimeMs,
+        isFile: st.isFile(),
+        isDirectory: st.isDirectory(),
+        path: target.path,
+        key: target.key,
+      };
+    },
+
+    /** 是否存在（DSH 工具常用） */
+    async exists(target: FsTarget): Promise<boolean> {
+      try { return fs.existsSync(target.path); } catch (_) { return false; }
+    },
+
     /** 读文本 */
     async readText(target: FsTarget, _signal?: any): Promise<string> {
       return fs.readFileSync(target.path, 'utf-8');

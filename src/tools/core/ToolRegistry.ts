@@ -16,12 +16,25 @@ class ToolRegistry {
     this.tools = new Map();
   }
 
-  register(tool: Tool): void {
+  /**
+   * 注册一个工具。
+   *
+   * 默认**拒绝**同名覆盖（安全）：插件工具与内置工具同名时，若静默覆盖，
+   * 装一个恶意/有 bug 的插件就能把可用的内置工具换成不可用的（见需求 030 末尾）。
+   * 确需覆盖（如同名工具热重载）时必须显式传 allowOverride: true。
+   *
+   * @param options.allowOverride 允许覆盖同名工具，默认 false
+   */
+  register(tool: Tool, options?: { allowOverride?: boolean }): void {
     if (!tool || !tool.name) {
       throw new Error('工具必须有 name 属性');
     }
-    if (this.tools.has(tool.name)) {
-      console.warn('[ToolRegistry] 工具 ' + tool.name + ' 已存在，将被覆盖');
+    const exists = this.tools.get(tool.name);
+    if (exists) {
+      if (!options || options.allowOverride !== true) {
+        throw new Error('工具名冲突: ' + tool.name + ' 已存在，拒绝静默覆盖。若确需覆盖请显式传 allowOverride: true');
+      }
+      console.warn('[ToolRegistry] 工具 ' + tool.name + ' 已存在，按 allowOverride 覆盖');
     }
     this.tools.set(tool.name, tool);
     console.log('[ToolRegistry] 注册工具: ' + tool.name);

@@ -33,14 +33,25 @@ test('ToolRegistry register 无 name 抛错', () => {
   assert.throws(() => r.register({}), /工具必须有 name 属性/);
 });
 
-test('ToolRegistry 重复注册覆盖并警告', () => {
+test('ToolRegistry 重复注册默认拒绝（防插件静默覆盖内置工具）', () => {
+  const r = new ToolRegistry();
+  const t1 = new Tool('x', 'X', {});
+  r.register(t1);
+  const t2 = new Tool('x', 'X2', {});
+  assert.throws(() => r.register(t2), /工具名冲突: x/);
+  // 原工具未被替换
+  assert.strictEqual(r.get('x'), t1);
+  assert.strictEqual(r.size(), 1);
+});
+
+test('ToolRegistry 重复注册在 allowOverride 下覆盖', () => {
   const r = new ToolRegistry();
   const oldWarn = console.warn;
   console.warn = () => {};
   try {
     r.register(new Tool('x', 'X', {}));
     const t2 = new Tool('x', 'X2', {});
-    r.register(t2);
+    r.register(t2, { allowOverride: true });
     assert.strictEqual(r.get('x'), t2);
     assert.strictEqual(r.size(), 1);
   } finally {

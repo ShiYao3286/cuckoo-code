@@ -36,6 +36,17 @@ test('C4-B：ctx.fs 读写列编辑', async () => {
     // edit
     await ctx.fs.editText(t, { oldText: 'Cuckoo', newText: 'DSH' });
     assert.strictEqual(await ctx.fs.readText(t), '你好 DSH');
+    // stat（此前缺失，导致依赖元信息的 DSH 工具崩；见需求 030 末尾）
+    const st = await ctx.fs.stat(t);
+    assert.strictEqual(st.type, 'file');
+    assert.strictEqual(st.isFile, true);
+    assert.strictEqual(st.isDirectory, false);
+    assert.strictEqual(typeof st.size, 'number');
+    assert.strictEqual(typeof st.mtimeMs, 'number');
+    assert.strictEqual(st.path, t.path);
+    // exists
+    assert.strictEqual(await ctx.fs.exists(t), true);
+    assert.strictEqual(await ctx.fs.exists(await ctx.fs.resolve('nope.txt')), false);
   } finally {
     fs.rmSync(projDir, { recursive: true, force: true });
     fs.rmSync(pluginDir, { recursive: true, force: true });

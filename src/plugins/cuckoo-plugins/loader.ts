@@ -231,6 +231,32 @@ function createCollectorCtx(pluginName: string, host?: CuckooHost, runtime?: any
   return { ctx, tools, bus };
 }
 
+/**
+ * 解析插件的配置默认值。
+ *
+ * DSH/Cordis 的契约是插件导出一个 Config schema（schemastery/zod），
+ * 框架在 apply 前用 `Config.parse(userConfig)` 填默认值，再把结果作为第二个参数传进去。
+ * 此前直接传 `{}`，导致 `@deepseek-ai/dsh-tool-fs` 这类插件在 apply 里访问
+ * 缺失字段（如 readLimit）时直接抛错（见需求 030 末尾）。
+ *
+ * 尽力而为：Config 可能来自 schemastery（被 esbuild 映射成 stub），此时 parse 返回
+ * stub proxy，值不一定准，但至少不会因"字段不存在"崩；插件若自带真实 schema，则能正确填默认值。
+ * parse 抛错时回退到原 config（不因配置解析失败拦住整个插件）。
+ */
+function resolvePluginConfig(plugin: any, rawConfig: any): any {
+  const cfg = (rawConfig && typeof rawConfig === 'object') ? rawConfig : {};
+  const candidates = [plugin && (plugin as any).Config, plugin && (plugin as any).config];
+  for (const C of candidates) {
+    if (C && typeof (C as any).parse === 'function') {
+      try {
+        const parsed = (C as any).parse(cfg);
+        if (parsed && typeof parsed === 'object') return parsed;
+      } catch (_) { /* 解析失败：回退 */ }
+    }
+  }
+  return cfg;
+}
+
 /** 从插件目录加载，返回 { pluginName, tools, runtime, bus } */
 async function loadCuckooPlugin(pluginDir: string, host?: CuckooHost): Promise<{ pluginName: string; tools: any[]; runtime: any; bus: any }> {
   const entry = resolveEntry(pluginDir);
@@ -248,7 +274,9 @@ async function loadCuckooPlugin(pluginDir: string, host?: CuckooHost): Promise<{
   const pluginName = (plugin && typeof plugin.name === 'string' && plugin.name) ? plugin.name : path.basename(pluginDir);
   const { ctx, tools, bus } = createCollectorCtx(pluginName, host, runtime);
   if (plugin && typeof plugin.apply === 'function') {
-    await plugin.apply(ctx, {});
+    // 解析插件导出的 Config 默认值后作为第二参传入（见 resolvePluginConfig 注释）
+    const config = resolvePluginConfig(plugin, undefined);
+    await plugin.apply(ctx, config);
   }
   return { pluginName, tools, runtime, bus };
 }
