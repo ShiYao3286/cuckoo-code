@@ -87,7 +87,8 @@
     "win": {
       "icon": "build/icon.png",
       "target": [
-        "nsis"
+        "nsis",
+        "zip"
       ],
       "artifactName": "cuckoo-code-win-v${version}-${arch}.${ext}"
     },

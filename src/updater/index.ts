@@ -4,6 +4,8 @@
  * 职责：检查更新、下载进度提示、下载完成提醒、网络错误友好提示。
  */
 import { createRequire } from 'node:module';
+import fs from 'node:fs';
+import path from 'node:path';
 import updaterPkg from 'electron-updater';
 
 // electron 特殊：其 index.js 导出字符串，须用 createRequire（见 P3a 手册 1.5）
@@ -125,8 +127,54 @@ async function showUpdateErrorDialog(error: any, isManual: boolean): Promise<boo
   return result.response === 0; // 返回 true 表示用户点击了"重试"
 }
 
+/**
+ * 是否为"绿色版/便携版"（zip 解压即用，没有 NSIS 安装器）。
+ *
+ * 判据：打包后运行，且没有安装标记文件——electron-builder 打包 NSIS 时会在
+ * resources 旁写 `app-update.yml` 供更新器使用；更可靠的信号是安装版才有 uninstall 程序。
+ * 这里用最稳的一条：**存在 `resources\app-update.yml` 且进程可执行文件旁有 Uninstall 程序**才算安装版；
+ * 否则视为便携版。
+ *
+ * 便携版必须跳过自动更新：它没有安装器，quitAndInstall() 会去拉起一个不存在的 NSIS 包，
+ * 表现为"点了更新没反应/报错"。绿色版更新方式应是重新下载 zip 覆盖。
+ */
+function isPortableBuild(): boolean {
+  if (!app.isPackaged) return false;
+  try {
+    // electron-builder 的 "portable" 目标会注入该环境变量；zip 解压版没有
+    if (process.env.PORTABLE_EXECUTABLE_DIR) return true;
+    const exeDir = path.dirname(process.execPath);
+    // 安装版在 exe 同目录有 Uninstall <ProductName>.exe；绿色版没有
+    const hasUninstall = fs.existsSync(path.join(exeDir, 'Uninstall Cuckoo-Code.exe'));
+    return !hasUninstall;
+  } catch (_) {
+    return false;
+  }
+}
+
 /** 手动检查更新入口 */
 async function checkForUpdates(): Promise<void> {
+  if (isPortableBuild()) {
+    const options = {
+      type: 'info',
+      title: '绿色版不支持自动更新',
+      message: '当前是绿色版（解压即用）',
+      detail: '绿色版没有安装器，无法自动覆盖更新。\n请到 Releases 页面下载新版 zip，解压后替换整个目录即可（配置文件在 %APPDATA%，不受影响）。',
+      buttons: ['打开下载页', '知道了'],
+      defaultId: 0,
+      cancelId: 1,
+    };
+    const parent = mainWindowRef && !mainWindowRef.isDestroyed() ? mainWindowRef : null;
+    const result = parent
+      ? await dialog.showMessageBox(parent, options)
+      : await dialog.showMessageBox(options);
+    if (result.response === 0) {
+      const { shell } = require('electron');
+      try { shell.openExternal('https://github.com/ShiYao3286/cuckoo-code/releases/latest'); } catch (_) { /* ignore */ }
+    }
+    return;
+  }
+
   if (updateDownloaded) {
     // 已有下载完成的更新，直接提示安装
     const options = {
@@ -264,6 +312,12 @@ function initAutoUpdater(win: any): void {
     return;
   }
 
+  // 绿色版（zip 解压即用）没有安装器，自动更新会失败；跳过并留给手动检查时的说明
+  if (isPortableBuild()) {
+    console.log('[Updater] 检测到绿色版，跳过自动更新（请手动下载新版 zip 覆盖）');
+    return;
+  }
+
   // 应用启动后延迟 5 秒检查，避免影响启动速度
   setTimeout(() => {
     console.log('[Updater] 启动自动检查更新');
@@ -279,4 +333,5 @@ export {
   setMainWindow,
   isNetworkError,
   isGitHubAccessError,
+  isPortableBuild,
 };
