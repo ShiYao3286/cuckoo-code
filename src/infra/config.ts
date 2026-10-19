@@ -16,11 +16,17 @@ export interface UserConfig {
    * 关闭后 edit/write 恢复无条件执行（旧行为），用于排除误伤或调试。
    */
   fsGuardEnabled: boolean;
+  /**
+   * 连续多少次相同工具调用后给"别重复"提醒（默认 3）。
+   * 0 或负数 = 关闭提醒。
+   */
+  repeatCallThreshold: number;
 }
 
 const DEFAULT_CONFIG: UserConfig = {
   memoriesEnabled: false,
   fsGuardEnabled: true,
+  repeatCallThreshold: 3,
 };
 
 /** 用户级目录（可用 CUCKOO_HOME 覆盖，供测试隔离） */
@@ -61,6 +67,9 @@ function readConfig(): UserConfig {
           memoriesEnabled: raw.memoriesEnabled === true,
           // 默认开：只有显式 false 才关闭（旧配置文件无此字段时保持启用）
           fsGuardEnabled: raw.fsGuardEnabled !== false,
+          repeatCallThreshold: Number.isFinite(raw.repeatCallThreshold)
+            ? Math.round(raw.repeatCallThreshold)
+            : DEFAULT_CONFIG.repeatCallThreshold,
         };
         configCache = { mtimeMs: st.mtimeMs, size: st.size, file, value };
         return value;
@@ -110,6 +119,21 @@ function setFsGuardEnabled(enabled: boolean): boolean {
 }
 
 /**
+ * 重复调用提醒阈值（连续 N 次相同调用后提醒）。
+ * <=0 表示关闭提醒。
+ */
+function getRepeatCallThreshold(): number {
+  const v = readConfig().repeatCallThreshold;
+  return Number.isFinite(v) ? v : 3;
+}
+
+/** 设置重复调用提醒阈值 */
+function setRepeatCallThreshold(n: number): boolean {
+  const v = Number.isFinite(n) ? Math.round(n) : 3;
+  return writeConfig({ repeatCallThreshold: v });
+}
+
+/**
  * 已启用的工具功能分组（用于注入对应的 API 契约文件 api.<feature>.d.ts）。
  * 目前仅 'memories'。
  */
@@ -123,5 +147,6 @@ export {
   readConfig, writeConfig,
   isMemoriesEnabled, setMemoriesEnabled,
   isFsGuardEnabled, setFsGuardEnabled,
+  getRepeatCallThreshold, setRepeatCallThreshold,
   getEnabledToolFeatures, getConfigFile,
 };

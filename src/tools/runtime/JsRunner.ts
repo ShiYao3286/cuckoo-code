@@ -18,6 +18,8 @@ import { getPluginScanRoots } from '../../plugins/roots.js';
 import { matchRulesForPath } from '../../rules/matcher.js';
 import { renderRuleFull, renderRulePointer } from '../../rules/prompt.js';
 import { buildTruncatedOutput } from './spill.js';
+import { recordCall } from './repeat-guard.js';
+import { getRepeatCallThreshold } from '../../infra/config.js';
 
 // 同步执行超时（vm timeout，覆盖无 await 的死循环）
 const SYNC_TIMEOUT = 30 * 1000;
@@ -178,6 +180,8 @@ class JsRunner {
     const toolFailures: ToolFailure[] = [];
     // 本次脚本 read 过的文件（项目内相对路径，正斜杠）——供规则注入
     const readFiles: string[] = [];
+    // 本次脚本触发的"重复调用提醒"（成功结果不能改 data，统一在脚本末尾拼进 output）
+    const repeatHints: string[] = [];
 
     // 唯一跨域桥接函数：AI 代码中的每个工具调用都通过它回到主进程执行。
     // 注意：该函数绝不向沙箱抛出宿主对象（错误一律包装成 { success:false, error } 结果），
@@ -220,6 +224,31 @@ class JsRunner {
       }
       if (isLongTask) longTaskRunning = Math.max(0, longTaskRunning - 1);
       lastActivity = Date.now(); // 工具返回后也续命
+
+      // ===== 重复调用提醒（跨脚本、跨轮次，按会话累计）=====
+      // 走"拼进回传文本"这条路：模型每轮必读工具结果，比在提示词里写"别重复"有效。
+      // 只提醒不阻断——轮询日志/等构建是合法重复用法。
+      // 注意：成功结果绝不能改 result.data——它是沙箱里工具函数的返回值
+      // （deleteFile 返回 {message,path} 等结构，改了会破坏 AI 代码的字段访问契约）。
+      // 成功时提醒进 repeatHints，脚本结束时拼到 output 开头（与规则注入同一通道）。
+      try {
+        const hint = recordCall(
+          settings && settings.sessionId,
+          String(op || ''),
+          args,
+          !!(result && result.success !== false),
+          getRepeatCallThreshold()
+        );
+        if (hint) {
+          if (result && result.success === false) {
+            // 失败：error 本就是给模型看的自由文本，直接追加
+            result = Object.assign({}, result, { error: (result.error || '') + '\n\n' + hint });
+          } else {
+            repeatHints.push(hint);
+          }
+        }
+      } catch (_) { /* 提醒失败绝不影响工具结果 */ }
+
       return JSON.stringify(result);
     };
 
@@ -321,6 +350,12 @@ class JsRunner {
       if (rulesInjection) {
         // 拼在输出开头（截断切尾，开头必保留）
         output = rulesInjection + '\n\n' + output;
+      }
+
+      // ===== 重复调用提醒（成功路径）=====
+      // 与规则注入同一通道：拼在输出开头，截断也切不到它。
+      if (repeatHints.length > 0) {
+        output = repeatHints.join('\n\n') + (output ? '\n\n' + output : '');
       }
 
       if (output.length > OUTPUT_LIMIT) {
