@@ -1,5 +1,6 @@
 /**
  * 记忆（Memories）页：列表、新建、编辑、删除。
+ * 035 起：显示作用域（用户级 / 项目级），编辑走按 id 增量更新（避免整体覆盖丢数据）。
  */
 import { api, ckAlert, ckConfirm, ckPrompt, escapeHtml, escapeAttr } from '../shared.js';
 
@@ -24,6 +25,14 @@ export async function loadMemories(): Promise<void> {
   renderMemories();
 }
 
+/** 作用域徽标：用户级 / 项目级 */
+function scopeBadge(scope: string): string {
+  if (scope === 'user') {
+    return '<span class="ck-mem-scope ck-mem-scope-user" title="所有项目生效">全局</span>';
+  }
+  return '<span class="ck-mem-scope ck-mem-scope-project" title="仅该项目生效">项目</span>';
+}
+
 function renderMemories(): void {
   const listEl = document.getElementById('mem-list');
   if (!listEl) return;
@@ -34,6 +43,7 @@ function renderMemories(): void {
   listEl.innerHTML = memories.map((m: any) => {
     return '<div class="ck-snip-item" data-id="' + escapeAttr(m.id) + '">' +
       '<div class="ck-snip-top">' +
+        scopeBadge(m.scope) +
         '<span class="ck-snip-name">' + escapeHtml(m.text) + '</span>' +
         '<div class="ck-snip-actions">' +
           '<button class="ck-snip-icon-btn" data-edit="' + escapeAttr(m.id) + '" title="编辑">' +
@@ -56,9 +66,12 @@ function renderMemories(): void {
       if (text === null) return;
       const t = text.trim();
       if (!t) { await ckAlert('内容不能为空'); return; }
-      memories = memories.map((x: any) => x.id === m.id ? { ...x, text: t } : x);
-      if (api.saveMemories) { try { await api.saveMemories(memories); } catch (_) {} }
-      renderMemories();
+      // 增量更新：只改这一条，不覆盖整个数组（避免并发时丢掉 AI 新写的记忆）
+      if (api.updateMemory) {
+        const r = await api.updateMemory(m.id, t);
+        if (!r || !r.success) { await ckAlert((r && r.error) || '更新失败'); return; }
+      }
+      await loadMemories();
     });
   });
   listEl.querySelectorAll('[data-del]').forEach((btn: any) => {
@@ -78,7 +91,15 @@ document.getElementById('mem-add')?.addEventListener('click', async () => {
   if (text === null) return;
   const t = text.trim();
   if (!t) { await ckAlert('内容不能为空'); return; }
-  if (api.addMemory) { try { await api.addMemory(t); } catch (_) {} }
+  // 作用域选择：默认用户级（可勾选"仅当前项目"）
+  const onlyProject = await ckConfirm('这条记忆只对当前项目生效吗？\n\n确定 = 仅当前项目\n取消 = 全局（所有项目）');
+  const scope = onlyProject ? 'project' : 'user';
+  if (api.addMemory) {
+    try {
+      const r = await api.addMemory(t, scope);
+      if (!r || !r.success) { await ckAlert((r && r.error) || '添加失败'); return; }
+    } catch (_) {}
+  }
   await loadMemories();
 });
 document.getElementById('mem-refresh')?.addEventListener('click', loadMemories);
@@ -88,7 +109,10 @@ document.getElementById('mem-enabled')?.addEventListener('change', async (e: any
   if (!api.setMemoriesEnabled) return;
   try {
     await api.setMemoriesEnabled(!!e.target.checked);
-    await ckAlert(e.target.checked ? '记忆功能已开启' : '记忆功能已关闭');
+    const msg = e.target.checked
+      ? '记忆功能已开启。\n\n提示：需要重新初始化项目才会把已有记忆注入系统提示词。'
+      : '记忆功能已关闭。';
+    await ckAlert(msg);
   } catch (_) { await ckAlert('设置失败'); }
 });
 

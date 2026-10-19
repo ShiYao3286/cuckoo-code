@@ -823,11 +823,14 @@ injectSessionTitleSetter(async ({ windowId, title }: any) => {
   return r;
 });
 
-// 给 remember/forgetMemory 工具注入记忆存储（tools 层不依赖 app/infra 实现）
+// 给 remember/forgetMemory/listMemories 工具注入记忆存储（tools 层不依赖 app/infra 实现）
 injectMemoryStore({
-  add: (text: string) => { const m = addMemory(text); return m ? { id: m.id } : null; },
+  add: (text: string, scope?: string) => {
+    const m = addMemory(text, scope);
+    return m ? { id: m.id, scope: m.scope } : null;
+  },
   remove: (id: string) => removeMemory(id),
-  list: () => listMemories().map((m) => ({ id: m.id, text: m.text })),
+  list: () => listMemories().map((m) => ({ id: m.id, text: m.text, scope: m.scope, createdAt: m.createdAt })),
 });
 // ========== 窗口组探测 ==========
 // 把目标窗口导航到 "首页?cuckoo-probe=1"，等其 bridge 上报探测结果。

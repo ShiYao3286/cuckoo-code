@@ -49,7 +49,8 @@ export interface ShellAPI {
   setMemoriesEnabled?: (enabled: boolean) => Promise<any>;
   listMemories?: () => Promise<any>;
   saveMemories?: (memories: any[]) => Promise<any>;
-  addMemory?: (text: string) => Promise<any>;
+  addMemory?: (text: string, scope?: string) => Promise<any>;
+  updateMemory?: (id: string, text: string) => Promise<any>;
   deleteMemory?: (id: string) => Promise<any>;
   onMemoriesChanged?: (cb: () => void) => void;
   /** 切换纯净对话模式（Harness） */

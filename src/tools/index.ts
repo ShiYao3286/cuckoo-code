@@ -25,7 +25,7 @@ import { RunAgentTool } from './impl/run-agent.js';
 import { GoalDoneTool } from './impl/goal-done.js';
 import { GoalBlockedTool } from './impl/goal-blocked.js';
 import { NameConversationTool } from './impl/name-conversation.js';
-import { RememberTool, ForgetMemoryTool } from './impl/remember.js';
+import { RememberTool, ForgetMemoryTool, ListMemoriesTool } from './impl/remember.js';
 
 // 创建全局工具注册表
 const registry = new ToolRegistry();
@@ -55,6 +55,7 @@ registry.register(new GoalBlockedTool());
 registry.register(new NameConversationTool());
 registry.register(new RememberTool());
 registry.register(new ForgetMemoryTool());
+registry.register(new ListMemoriesTool());
 
 // JS 工具脚本执行器（单例：AI 生成的 JS 代码调用工具函数）
 const jsRunner = new JsRunner(registry);

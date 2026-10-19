@@ -229,6 +229,13 @@
   .ck-snip-item:hover + .ck-snip-item { border-top-color: transparent; }
   /* 标题行：名称 + 操作按钮（同高） */
   .ck-snip-top { display: flex; align-items: center; gap: 8px; min-height: 26px; }
+  /* 记忆作用域徽标（035）：全局 / 项目 */
+  .ck-mem-scope {
+    flex-shrink: 0; font-size: 10px; line-height: 1; padding: 3px 6px;
+    border-radius: 6px; font-weight: 600; letter-spacing: .02em;
+  }
+  .ck-mem-scope-user { color: var(--ck-primary); background: color-mix(in srgb, var(--ck-primary) 14%, transparent); }
+  .ck-mem-scope-project { color: var(--ck-text-dim); background: color-mix(in srgb, var(--ck-text-dim) 14%, transparent); }
   .ck-snip-name { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; color: var(--ck-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ck-snip-preview {
     font-size: 11px; color: var(--ck-text-dim); line-height: 1.5;

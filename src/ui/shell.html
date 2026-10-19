@@ -503,6 +503,13 @@
   .ck-snip-item:hover + .ck-snip-item { border-top-color: transparent; }
   /* 标题行：名称 + 操作按钮（同高） */
   .ck-snip-top { display: flex; align-items: center; gap: 8px; min-height: 26px; }
+  /* 记忆作用域徽标（035）：全局 / 项目 */
+  .ck-mem-scope {
+    flex-shrink: 0; font-size: 10px; line-height: 1; padding: 3px 6px;
+    border-radius: 6px; font-weight: 600; letter-spacing: .02em;
+  }
+  .ck-mem-scope-user { color: var(--ck-primary); background: color-mix(in srgb, var(--ck-primary) 14%, transparent); }
+  .ck-mem-scope-project { color: var(--ck-text-dim); background: color-mix(in srgb, var(--ck-text-dim) 14%, transparent); }
   .ck-snip-name { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; color: var(--ck-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ck-snip-preview {
     font-size: 11px; color: var(--ck-text-dim); line-height: 1.5;
@@ -1515,7 +1522,7 @@
                   <span>启用记忆功能（关闭后不注入提示词、不捕获标记、不可调用）</span>
                 </label>
               </div>
-              <p class="ck-about-tip">记忆会随系统提示词发给模型，让 AI 了解你的习惯（跨项目保留）。</p>
+              <p class="ck-about-tip">记忆会随系统提示词发给模型，让 AI 了解你的习惯。<b>全局</b>记忆在所有项目生效；<b>项目</b>记忆只在所属项目生效。</p>
               <div class="ck-list" id="mem-list">
                 <div class="ck-list-empty">加载中…</div>
               </div>
@@ -5107,6 +5114,12 @@
     }
     renderMemories();
   }
+  function scopeBadge(scope) {
+    if (scope === "user") {
+      return '<span class="ck-mem-scope ck-mem-scope-user" title="\u6240\u6709\u9879\u76EE\u751F\u6548">\u5168\u5C40</span>';
+    }
+    return '<span class="ck-mem-scope ck-mem-scope-project" title="\u4EC5\u8BE5\u9879\u76EE\u751F\u6548">\u9879\u76EE</span>';
+  }
   function renderMemories() {
     const listEl2 = document.getElementById("mem-list");
     if (!listEl2) return;
@@ -5115,7 +5128,7 @@
       return;
     }
     listEl2.innerHTML = memories.map((m) => {
-      return '<div class="ck-snip-item" data-id="' + escapeAttr(m.id) + '"><div class="ck-snip-top"><span class="ck-snip-name">' + escapeHtml(m.text) + '</span><div class="ck-snip-actions"><button class="ck-snip-icon-btn" data-edit="' + escapeAttr(m.id) + '" title="\u7F16\u8F91"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button><button class="ck-snip-icon-btn danger" data-del="' + escapeAttr(m.id) + '" title="\u5220\u9664"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button></div></div></div>';
+      return '<div class="ck-snip-item" data-id="' + escapeAttr(m.id) + '"><div class="ck-snip-top">' + scopeBadge(m.scope) + '<span class="ck-snip-name">' + escapeHtml(m.text) + '</span><div class="ck-snip-actions"><button class="ck-snip-icon-btn" data-edit="' + escapeAttr(m.id) + '" title="\u7F16\u8F91"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button><button class="ck-snip-icon-btn danger" data-del="' + escapeAttr(m.id) + '" title="\u5220\u9664"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button></div></div></div>';
     }).join("");
     listEl2.querySelectorAll("[data-edit]").forEach((btn) => {
       btn.addEventListener("click", async (e) => {
@@ -5129,14 +5142,14 @@
           await ckAlert("\u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A");
           return;
         }
-        memories = memories.map((x) => x.id === m.id ? { ...x, text: t } : x);
-        if (api.saveMemories) {
-          try {
-            await api.saveMemories(memories);
-          } catch (_) {
+        if (api.updateMemory) {
+          const r = await api.updateMemory(m.id, t);
+          if (!r || !r.success) {
+            await ckAlert(r && r.error || "\u66F4\u65B0\u5931\u8D25");
+            return;
           }
         }
-        renderMemories();
+        await loadMemories();
       });
     });
     listEl2.querySelectorAll("[data-del]").forEach((btn) => {
@@ -5163,9 +5176,15 @@
       await ckAlert("\u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A");
       return;
     }
+    const onlyProject = await ckConfirm("\u8FD9\u6761\u8BB0\u5FC6\u53EA\u5BF9\u5F53\u524D\u9879\u76EE\u751F\u6548\u5417\uFF1F\n\n\u786E\u5B9A = \u4EC5\u5F53\u524D\u9879\u76EE\n\u53D6\u6D88 = \u5168\u5C40\uFF08\u6240\u6709\u9879\u76EE\uFF09");
+    const scope = onlyProject ? "project" : "user";
     if (api.addMemory) {
       try {
-        await api.addMemory(t);
+        const r = await api.addMemory(t, scope);
+        if (!r || !r.success) {
+          await ckAlert(r && r.error || "\u6DFB\u52A0\u5931\u8D25");
+          return;
+        }
       } catch (_) {
       }
     }
@@ -5176,7 +5195,8 @@
     if (!api.setMemoriesEnabled) return;
     try {
       await api.setMemoriesEnabled(!!e.target.checked);
-      await ckAlert(e.target.checked ? "\u8BB0\u5FC6\u529F\u80FD\u5DF2\u5F00\u542F" : "\u8BB0\u5FC6\u529F\u80FD\u5DF2\u5173\u95ED");
+      const msg = e.target.checked ? "\u8BB0\u5FC6\u529F\u80FD\u5DF2\u5F00\u542F\u3002\n\n\u63D0\u793A\uFF1A\u9700\u8981\u91CD\u65B0\u521D\u59CB\u5316\u9879\u76EE\u624D\u4F1A\u628A\u5DF2\u6709\u8BB0\u5FC6\u6CE8\u5165\u7CFB\u7EDF\u63D0\u793A\u8BCD\u3002" : "\u8BB0\u5FC6\u529F\u80FD\u5DF2\u5173\u95ED\u3002";
+      await ckAlert(msg);
     } catch (_) {
       await ckAlert("\u8BBE\u7F6E\u5931\u8D25");
     }
