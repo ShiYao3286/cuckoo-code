@@ -21,6 +21,7 @@
     ".cuckooCode",
     ".playwright-mcp",
     "src/providers/hooks",
-    "src/ui/shell"
+    "src/ui/shell",
+    "src/ui/novel.ts"
   ]
 }

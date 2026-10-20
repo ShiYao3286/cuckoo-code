@@ -49,6 +49,9 @@ function getContextByWebContents(webContents: any): WindowContext | null {
     if (ctx.win.webContents === webContents) return ctx;
     if (ctx.view && ctx.view.webContents === webContents) return ctx;
     if ((ctx as any).harnessView && (ctx as any).harnessView.webContents === webContents) return ctx;
+    // 写作台视图（需求 041）：漏了它会导致写作台所有 IPC 拿不到 sessionStore，
+    // 表现为"未初始化项目"（getProjectDir 返回 needsInit）。
+    if ((ctx as any).novelView && (ctx as any).novelView.webContents === webContents) return ctx;
   }
   return null;
 }

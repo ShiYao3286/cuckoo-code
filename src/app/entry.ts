@@ -353,6 +353,88 @@ function createWindow(profile: any) {
     return hv;
   };
 
+  // ========== 写作台（Novel）覆盖视图（需求 041，懒加载） ==========
+  // 与纯净模式同构：AI 网页继续在后台跑，写作台盖在上面。
+  // 只服务「已初始化项目」的窗口（初始化仍在网页模式完成）。
+  // 独立 WebContentsView + 独立 preload，页面逻辑走 src/ui/novel.ts（模块化，不写巨型单文件）。
+  let novelView: any = null;
+  (mainWindow as any).__ckNovelView = null;
+  (mainWindow as any).__ckNovelVisible = false;
+
+  const ensureNovelView = (): any => {
+    if (novelView && !novelView.webContents.isDestroyed()) return novelView;
+    const nv = new WebContentsView({
+      webPreferences: {
+        preload: path.join(import.meta.dirname, 'novel-preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false,
+        partition: profileData.partition,
+        additionalArguments: ['--cuckoo-user-data=' + app.getPath('userData')],
+      },
+    });
+    mainWindow.contentView.addChildView(nv);
+    nv.setBackgroundColor('#14161c');
+    nv.setBounds({ x: 0, y: 0, width: 0, height: 0 });
+    novelView = nv;
+    (mainWindow as any).__ckNovelView = nv;
+    {
+      const ctx: any = windowState.getWindowContext(mainWindow.id);
+      if (ctx) ctx.novelView = nv;
+    }
+    nv.webContents.loadFile(resolveSrc('ui/novel.html'));
+    nv.webContents.on('did-finish-load', () => {
+      console.log('[Cuckoo Novel] 页面加载完成');
+    });
+    nv.webContents.on('did-fail-load', (_e: any, code: any, desc: any) => {
+      console.error('[Cuckoo Novel] 页面加载失败: ' + code + ' ' + desc);
+    });
+    nv.webContents.on('console-message', (_e: any, _l: any, msg: any) => {
+      console.log('[Novel Console] ' + msg);
+    });
+    // 页面内 Ctrl+R 重载（开发便利）
+    nv.webContents.on('before-input-event', (_event: any, input: any) => {
+      if (input.control && !input.shift && (input.key === 'r' || input.key === 'R')) {
+        nv.webContents.reloadIgnoringCache();
+      }
+    });
+    return nv;
+  };
+
+  /**
+   * 切换写作台（三模式互斥：网页 / 纯净 / 写作）
+   * @param show true=进入写作台；false=回到网页模式
+   */
+  (mainWindow as any).__ckToggleNovel = (show?: boolean) => {
+    if (mainWindow.isDestroyed()) return;
+    const next = typeof show === 'boolean' ? show : !(mainWindow as any).__ckNovelVisible;
+    (mainWindow as any).__ckNovelVisible = next;
+    if (next) {
+      // 进入写作台：先退出纯净模式（三者互斥），再显示写作台
+      if ((mainWindow as any).__ckHarnessVisible) {
+        try { (mainWindow as any).__ckToggleHarness?.(false); } catch (_) {}
+      }
+      const nv = ensureNovelView();
+      try { nv.setVisible(true); } catch (_) {}
+      // 隐藏 AI 网页（同纯净模式：它继续在后台跑，只是不可见）
+      try { if (view && !view.webContents.isDestroyed()) view.setVisible(false); } catch (_) {}
+      layoutView();
+      try { nv.webContents.focus(); } catch (_) {}
+      // 通知写作台刷新项目/章节（每次进入都拉一次，避免看到旧数据）
+      try { nv.webContents.send('novel-state', { type: 'project-changed' }); } catch (_) {}
+    } else {
+      const nv0 = (mainWindow as any).__ckNovelView;
+      if (nv0 && !nv0.webContents.isDestroyed()) {
+        try { nv0.setVisible(false); } catch (_) {}
+        try { nv0.setBounds({ x: 0, y: 0, width: 0, height: 0 }); } catch (_) {}
+      }
+      try { if (view && !view.webContents.isDestroyed()) view.setVisible(true); } catch (_) {}
+      layoutView();
+    }
+    try { mainWindow.webContents.send('shell-novel-mode', { novel: next }); } catch (_) {}
+    try { view.webContents.send('novel-mode-changed', { novel: next }); } catch (_) {}
+  };
+
   // 布局：AI 页面占地址栏下方、Cuckoo 侧边栏右侧区域。
   // 侧边栏可收起（收起时 x=0，AI 页面铺满）。
   const TOOLBAR_HEIGHT = 46; // 地址栏 46（与 shell.css .toolbar height 保持一致）
@@ -397,6 +479,19 @@ function createWindow(profile: any) {
         });
       } else {
         hv.setBounds({ x: 0, y: 0, width: 0, height: 0 });
+      }
+    }
+    // 写作台：与 harness 同位置（都是覆盖 AI 页面的整块区域）
+    const nv = (mainWindow as any).__ckNovelView;
+    if (nv && !nv.webContents.isDestroyed()) {
+      if ((mainWindow as any).__ckNovelVisible) {
+        nv.setBounds({
+          x: sbw, y: tbh,
+          width: Math.max(0, w - sbw),
+          height: Math.max(0, h - tbh - STATUS_HEIGHT),
+        });
+      } else {
+        nv.setBounds({ x: 0, y: 0, width: 0, height: 0 });
       }
     }
   };
@@ -806,6 +901,14 @@ function setupAppMenu() {
           click: (_item: any, focusedWindow: any) => {
             if (!focusedWindow) return;
             try { (focusedWindow as any).__ckToggleHarness?.(); } catch (_) {}
+          }
+        },
+        {
+          label: '写作台模式',
+          accelerator: 'CmdOrCtrl+Shift+W',
+          click: (_item: any, focusedWindow: any) => {
+            if (!focusedWindow) return;
+            try { (focusedWindow as any).__ckToggleNovel?.(); } catch (_) {}
           }
         },
         { type: 'separator' },

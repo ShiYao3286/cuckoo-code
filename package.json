@@ -5,7 +5,7 @@
   "type": "module",
   "main": "out/src/app/entry.js",
   "scripts": {
-    "compile": "node scripts/copy-monaco.mjs && node scripts/build-hooks.mjs && tsc -p tsconfig.build.json && node scripts/build-tool-api.mjs && node scripts/build-shell.mjs",
+    "compile": "node scripts/copy-monaco.mjs && node scripts/build-hooks.mjs && tsc -p tsconfig.build.json && node scripts/build-tool-api.mjs && node scripts/build-shell.mjs && node scripts/build-novel.mjs",
     "copy-monaco": "node scripts/copy-monaco.mjs",
     "fetch-runtime": "node scripts/fetch-runtime.mjs",
     "start": "node scripts/fetch-runtime.mjs && node scripts/copy-monaco.mjs && node start.js",

@@ -55,6 +55,11 @@ const shellAPI = {
   onHarnessMode: (cb: (data: any) => void) => {
     ipcRenderer.on('shell-harness-mode', (_e: any, data: any) => cb(data));
   },
+  // 写作台模式切换（需求 041）
+  toggleNovel: () => ipcRenderer.invoke('shell-toggle-novel'),
+  onNovelMode: (cb: (data: any) => void) => {
+    ipcRenderer.on('shell-novel-mode', (_e: any, data: any) => cb(data));
+  },
   // 插件界面挂载（主进程 → 壳页面）
   onPluginShellMount: (cb: (data: any) => void) => {
     ipcRenderer.on('shell-plugin-mount', (_e: any, data: any) => cb(data));

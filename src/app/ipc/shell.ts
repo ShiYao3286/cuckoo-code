@@ -332,6 +332,15 @@ function registerShellIpc(): void {
     return { success: true, harness: !!win.__ckHarnessVisible };
   });
 
+  // 切换写作台模式（需求 041）：三模式之一，供壳页面/测试调用
+  ipcMain.handle('shell-toggle-novel', async (event: any) => {
+    const ctx = windowState.getContextByWebContents(event.sender);
+    if (!ctx || !ctx.win || ctx.win.isDestroyed()) return { success: false };
+    const win = ctx.win;
+    try { win.__ckToggleNovel?.(); } catch (_) { /* ignore */ }
+    return { success: true, novel: !!win.__ckNovelVisible };
+  });
+
   // ===== 侧边栏拖拽调宽 =====
   // 拖拽时把 AI 视图移出（宽0），鼠标事件全落壳页面；主进程轮询鼠标位置算宽度并推回。
   // 松开后恢复 AI 视图。

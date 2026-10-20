@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Cuckoo Code preload 入口
  * 原 preload.js 的全部逻辑拆分为本目录下的模块，此处负责组装与初始化，
  * 初始化时序与原文件保持一致。
@@ -22,6 +22,7 @@ import { startRetryEngine } from './loop/retry.js';
 import { startSessionWatcher, startWatchdog, checkSessionChange } from './loop/watchdog.js';
 import { initSubagentIfNeeded } from './subagent.js';
 import { initHarnessBridge } from './harness-bridge.js';
+import { startNovelBridge } from './novel-bridge.js';
 import { initProbeIfNeeded } from './probe.js';
 import { initFeishuBridge } from './feishu-bridge.js';
 import { initPlugins, bindPluginReload } from './plugin-system.js';
@@ -262,6 +263,9 @@ function init(): void {
 
     // 纯净对话模式：把回复/工具调用上报主进程，并接收用户消息
     initHarnessBridge();
+
+    // 写作台模式（需求 041）：接收写作台消息 → 发到 AI；AI 回复 → 回传写作台
+    startNovelBridge();
 
     // 飞书同步：上报用户消息/AI回复/工具状态，并接收飞书来消息
     initFeishuBridge();
