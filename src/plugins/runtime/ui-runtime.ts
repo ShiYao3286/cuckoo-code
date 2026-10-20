@@ -83,6 +83,24 @@ function attachUi(ctx: any, pluginName: string): void {
   const rootId = UI_ROOT_PREFIX + pluginName;
   let rootEl: any = null;
 
+  /**
+   * 项目根目录缓存（ctx.workspace.root 用）
+   * ctx 的多数接口是同步的，而拿目录要走 IPC，所以在附加 UI 能力时预热一次，
+   * 并在 'project-dir-updated' 时刷新（切换项目后写作台要能重新定位）。
+   */
+  let uiRootCache: string | null = null;
+  try {
+    const api = (window as any).electronAPI;
+    if (api && typeof api.getProjectDir === 'function') {
+      Promise.resolve(api.getProjectDir()).then((r: any) => {
+        if (r && r.success) uiRootCache = r.dir || null;
+      }).catch(() => { /* ignore */ });
+    }
+    if (api && typeof api.onProjectDirUpdated === 'function') {
+      api.onProjectDirUpdated((dir: string | null) => { uiRootCache = dir || null; });
+    }
+  } catch (_) { /* ignore */ }
+
   const ensureRoot = (): any => {
     if (rootEl && rootEl.isConnected) return rootEl;
     rootEl = document.getElementById(rootId);
@@ -186,6 +204,41 @@ function attachUi(ctx: any, pluginName: string): void {
       const u = URL.createObjectURL(blob);
       blobUrls.push(u);
       return u;
+    },
+  };
+
+  // ===== 工作区访问（ctx.workspace，需求 040）=====
+  // UI 插件跑在渲染进程，原本只能读自己插件目录（ctx.assets），拿不到项目文件。
+  // 这组 API 把读写限制在"当前项目目录内"（主进程侧统一防目录穿越），
+  // 让插件能做需要落盘的事（小说写作台的正文/设定集就是这类）。
+  (ui as any).workspace = {
+    /** 读 UTF-8 文本。返回 { success, content, size } 或 { success:false, error } */
+    readText: (relPath: string) => {
+      const api = (window as any).electronAPI;
+      if (api && typeof api.workspaceRead === 'function') return api.workspaceRead(relPath);
+      return Promise.resolve({ success: false, error: 'workspaceRead 不可用' });
+    },
+    /** 写 UTF-8 文本（自动建父目录）。返回 { success, bytes } */
+    writeText: (relPath: string, content: string) => {
+      const api = (window as any).electronAPI;
+      if (api && typeof api.workspaceWrite === 'function') return api.workspaceWrite(relPath, content);
+      return Promise.resolve({ success: false, error: 'workspaceWrite 不可用' });
+    },
+    /** 列目录（单层）。返回 { success, entries: [{name, path, type}] } */
+    list: (relPath?: string) => {
+      const api = (window as any).electronAPI;
+      if (api && typeof api.workspaceList === 'function') return api.workspaceList(relPath);
+      return Promise.resolve({ success: false, error: 'workspaceList 不可用' });
+    },
+    /** 存在性判断。返回 { success, exists, type } */
+    exists: (relPath: string) => {
+      const api = (window as any).electronAPI;
+      if (api && typeof api.workspaceExists === 'function') return api.workspaceExists(relPath);
+      return Promise.resolve({ success: false, error: 'workspaceExists 不可用' });
+    },
+    /** 当前项目根目录（同步值；由 attachUi 启动时拉取并缓存） */
+    get root(): string | null {
+      return uiRootCache;
     },
   };
 

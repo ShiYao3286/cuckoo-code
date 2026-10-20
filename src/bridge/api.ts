@@ -172,6 +172,13 @@ let electronAPI: any = {
   onProjectDirUpdated: (cb: (dir: string | null) => void) => {
     ipcRenderer.on('project-dir-updated', (_e: any, dir: any) => cb(dir || null));
   },
+  // ===== 插件工作区（需求 040）=====
+  // UI 插件原本只能读自己插件目录（ctx.assets），拿不到项目文件。
+  // 这四条通道把它限制在"当前项目目录内"，主进程侧统一做防目录穿越校验。
+  workspaceRead: (relPath: string) => ipcRenderer.invoke('plugin-workspace-read', { relPath }),
+  workspaceWrite: (relPath: string, content: string) => ipcRenderer.invoke('plugin-workspace-write', { relPath, content }),
+  workspaceList: (relPath?: string) => ipcRenderer.invoke('plugin-workspace-list', { relPath }),
+  workspaceExists: (relPath: string) => ipcRenderer.invoke('plugin-workspace-exists', { relPath }),
   /** 注入代码到主世界（主进程 webContents.executeJavaScript） */
   injectMainWorld: (code: string) => {
     return ipcRenderer.invoke('plugin-inject-main-world', { code });

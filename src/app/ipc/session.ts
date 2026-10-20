@@ -105,6 +105,102 @@ function registerSessionIpc(): void {
     }
   });
 
+  // ===== 插件工作区 API（需求 040）=====
+  // UI 插件跑在渲染进程，原本只能读自己插件目录（ctx.assets），拿不到项目文件。
+  // 这三条通道把它限制在"当前项目目录内"，防护逻辑与 read-project-file 完全一致。
+
+  /** 解析并校验路径：必须在当前项目目录内，返回 { rootAbs, abs } 或错误 */
+  const resolveInProject = (event: any, relPath: any):
+    { ok: true; rootAbs: string; abs: string } | { ok: false; error: string } => {
+    const ctx = windowState.getContextByWebContents(event.sender);
+    const store = ctx ? ctx.sessionStore : null;
+    const rootDir = (store && store.state && store.state.selectedProjectDir) || null;
+    if (!rootDir) return { ok: false, error: '未选择项目目录' };
+    if (!relPath || typeof relPath !== 'string') return { ok: false, error: '缺少文件路径' };
+    const abs = path.resolve(rootDir, relPath);
+    const rootAbs = path.resolve(rootDir);
+    // 防目录穿越：拼接后必须仍在项目根内（含等于根本身）
+    if (abs !== rootAbs && !abs.startsWith(rootAbs + path.sep)) {
+      return { ok: false, error: '非法路径（超出项目目录）' };
+    }
+    return { ok: true, rootAbs, abs };
+  };
+
+  /** 读：返回 UTF-8 文本（拒绝二进制与超大文件） */
+  ipcMain.handle('plugin-workspace-read', async (event: any, { relPath }: any) => {
+    const r = resolveInProject(event, relPath);
+    if (!r.ok) return { success: false, error: r.error };
+    try {
+      const st = fs.statSync(r.abs);
+      if (!st.isFile()) return { success: false, error: '不是文件' };
+      const MAX = 2 * 1024 * 1024;
+      if (st.size > MAX) return { success: false, error: '文件过大（>2MB）' };
+      const fd = fs.openSync(r.abs, 'r');
+      const buf = Buffer.alloc(Math.min(4096, st.size));
+      fs.readSync(fd, buf, 0, buf.length, 0);
+      fs.closeSync(fd);
+      if (buf.includes(0)) return { success: false, error: '二进制文件，无法按文本读取' };
+      return { success: true, content: fs.readFileSync(r.abs, 'utf-8'), size: st.size };
+    } catch (err: any) {
+      if (err && err.code === 'ENOENT') return { success: false, error: '文件不存在' };
+      return { success: false, error: err && err.message ? err.message : String(err) };
+    }
+  });
+
+  /** 写：UTF-8 文本，自动建父目录；拒绝写入项目根之外 */
+  ipcMain.handle('plugin-workspace-write', async (event: any, { relPath, content }: any) => {
+    const r = resolveInProject(event, relPath);
+    if (!r.ok) return { success: false, error: r.error };
+    if (typeof content !== 'string') return { success: false, error: 'content 必须是字符串' };
+    // 与读保持一致的上限，避免插件把巨型内容灌进来
+    const MAX = 2 * 1024 * 1024;
+    if (Buffer.byteLength(content, 'utf-8') > MAX) return { success: false, error: '内容过大（>2MB）' };
+    try {
+      fs.mkdirSync(path.dirname(r.abs), { recursive: true });
+      fs.writeFileSync(r.abs, content, 'utf-8');
+      return { success: true, bytes: Buffer.byteLength(content, 'utf-8') };
+    } catch (err: any) {
+      return { success: false, error: err && err.message ? err.message : String(err) };
+    }
+  });
+
+  /** 列目录（单层）：返回 { name, path, type } */
+  ipcMain.handle('plugin-workspace-list', async (event: any, { relPath }: any) => {
+    const r = resolveInProject(event, typeof relPath === 'string' && relPath ? relPath : '.');
+    if (!r.ok) return { success: false, error: r.error };
+    try {
+      const st = fs.statSync(r.abs);
+      if (!st.isDirectory()) return { success: false, error: '不是目录' };
+      const entries = fs.readdirSync(r.abs, { withFileTypes: true });
+      const baseRel = (typeof relPath === 'string' && relPath && relPath !== '.') ? relPath.replace(/\\/g, '/').replace(/\/+$/, '') : '';
+      const out = entries.map((e) => ({
+        name: e.name,
+        path: baseRel ? baseRel + '/' + e.name : e.name,
+        type: e.isDirectory() ? 'dir' : 'file',
+      }));
+      out.sort((a, b) => {
+        if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
+        return a.name.localeCompare(b.name, undefined, { numeric: true });
+      });
+      return { success: true, entries: out };
+    } catch (err: any) {
+      if (err && err.code === 'ENOENT') return { success: false, error: '目录不存在', notFound: true };
+      return { success: false, error: err && err.message ? err.message : String(err) };
+    }
+  });
+
+  /** 存在性判断（文件或目录） */
+  ipcMain.handle('plugin-workspace-exists', async (event: any, { relPath }: any) => {
+    const r = resolveInProject(event, relPath);
+    if (!r.ok) return { success: false, error: r.error };
+    try {
+      const st = fs.statSync(r.abs);
+      return { success: true, exists: true, type: st.isDirectory() ? 'dir' : 'file' };
+    } catch (_) {
+      return { success: true, exists: false };
+    }
+  });
+
   // 列出会话（返回 { sessionId, projectDir, title, createdAt, updatedAt }）
   ipcMain.handle('list-sessions', async (event: any) => {
     const ctx = windowState.getContextByWebContents(event.sender);
