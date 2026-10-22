@@ -6,21 +6,43 @@
  * 有码时 JsRunner 会把 `[error code: X]` 渲染进回传给模型的文本，
  * 让模型按码分流处理，而不是靠正则猜中文错误文案。
  */
+/** 工具结果元数据：供 JsRunner 汇总成给模型的结构化提示（不进沙箱返回值） */
+interface ToolResultMeta {
+  /** 结果是否被截断（模型应据此决定是否用 offset 续读 / 缩小范围） */
+  truncated?: boolean;
+  /** 总条数/总行数（已知时） */
+  totalCount?: number;
+  /** 本次返回的条数/行数 */
+  returnedCount?: number;
+  /** 续读建议（如 "Use offset=2001 to continue."），拼进汇总提示 */
+  hint?: string;
+}
+
 class ToolResult {
   success: boolean;
   data: any;
   error: any;
   code: string | null;
+  meta: ToolResultMeta | null;
 
-  constructor(success: boolean, data: any, error: any, code?: string | null) {
+  constructor(success: boolean, data: any, error: any, code?: string | null, meta?: ToolResultMeta | null) {
     this.success = success;
     this.data = data;
     this.error = error;
     this.code = code || null;
+    this.meta = meta || null;
   }
 
   static success(data: any): ToolResult {
     return new ToolResult(true, data, null);
+  }
+
+  /**
+   * 成功 + 元数据。用于 read/grep/bash/webFetch 等可能截断的工具：
+   * data 仍是给模型的原文本，meta 由 JsRunner 汇总成脚本末尾的结构化提示。
+   */
+  static successWithMeta(data: any, meta: ToolResultMeta): ToolResult {
+    return new ToolResult(true, data, null, null, meta);
   }
 
   static error(error: any, code?: string): ToolResult {
@@ -58,3 +80,4 @@ const ToolErrorCode = {
 } as const;
 
 export { ToolResult, ToolErrorCode };
+export type { ToolResultMeta };

@@ -183,6 +183,8 @@ class JsRunner {
     const readFiles: string[] = [];
     // 本次脚本触发的"重复调用提醒"（成功结果不能改 data，统一在脚本末尾拼进 output）
     const repeatHints: string[] = [];
+    // 本次脚本里"结果被截断"的工具调用提示（P0-1）：同样在脚本末尾拼进 output
+    const truncationHints: string[] = [];
 
     // 唯一跨域桥接函数：AI 代码中的每个工具调用都通过它回到主进程执行。
     // 注意：该函数绝不向沙箱抛出宿主对象（错误一律包装成 { success:false, error } 结果），
@@ -211,7 +213,17 @@ class JsRunner {
         }
         if (result && result.success === false) {
           toolFailures.push({ tool: op, args: args, error: result.error || '未知错误' });
-        } else if (op === 'read' && result && result.success !== false) {
+        } else if (result && result.success !== false && result.meta && result.meta.truncated) {
+          // 结果被截断：记下来，脚本末尾统一提示。模型拿到的是「哪次调用没看全 + 怎么续」，
+          // 而不是自己从 footer 文案里猜。去重按 hint 文本（同一文件重复读只提示一次）。
+          const hint = result.meta.hint || (op + ' 的结果被截断');
+          if (truncationHints.indexOf(hint) === -1) truncationHints.push(hint);
+        }
+        if (result && result.meta) {
+          // meta 只给宿主用，不进沙箱：AI 代码拿到的仍是 { success, data, error, code }
+          result = Object.assign({}, result, { meta: undefined });
+        }
+        if (op === 'read' && result && result.success !== false) {
           // 记录本次读过的文件（项目内相对路径），供规则注入
           const rel = toProjectRelPath((args as any) && (args as any).filePath, projectDir);
           if (rel) readFiles.push(rel);
@@ -303,6 +315,19 @@ class JsRunner {
       if (dynCode) {
         vm.runInContext(dynCode, context, { filename: 'cuckoo-plugin-tools.js' });
       }
+      // ===== 启停一致性（P0-2）=====
+      // bootstrap.generated.ts 是构建期全量生成的，禁用的工具也进了沙箱。
+      // 提示词已按 isEnabled() 过滤，这里把沙箱内的同名绑定删掉，做到"看不见 = 调不到"。
+      // 删除失败不影响执行（最坏情况退化为原来的不一致行为）。
+      try {
+        const disabled = typeof this.registry.getDisabledToolNames === 'function'
+          ? this.registry.getDisabledToolNames()
+          : [];
+        for (const name of disabled) {
+          if (!JS_IDENT_RE.test(name)) continue;
+          vm.runInContext('try { delete globalThis[' + JSON.stringify(name) + ']; } catch (e) {}', context);
+        }
+      } catch (_) { /* 一致性加固失败不影响主流程 */ }
     } catch (err: any) {
       return { success: false, error: '沙箱初始化失败: ' + (err.message || String(err)) };
     }
@@ -349,6 +374,8 @@ class JsRunner {
       output = prependInjections(output, [
         // 重复调用提醒（成功路径）：比规则更紧急，排在前
         repeatHints.length > 0 ? repeatHints.join('\n\n') : null,
+        // 结果截断提示（P0-1）：告诉模型哪次调用没看全、怎么续读
+        truncationHints.length > 0 ? truncationHints.join('\n') : null,
         // 规则注入（有 paths 的规则，read 命中时）
         buildRulesInjection(readFiles, projectDir, settings),
       ]);

@@ -76,6 +76,27 @@ class ToolRegistry {
     return Array.from(this.tools.values()).filter((t) => (t as any).dynamic === true);
   }
 
+  /**
+   * 列出**已注册但当前禁用**的工具名（isEnabled() === false）。
+   *
+   * 用途：bootstrap.generated.ts 是构建期一次性生成的，会把所有工具的
+   * globalThis 绑定都注入沙箱。若某工具被 isEnabled() 关掉，它只是从提示词
+   * （{{TOOLS_LIST}} / {{TOOL_SECTIONS}}）消失，沙箱里仍可调用——"说了不生效"。
+   * JsRunner 拿到这份名单后在沙箱内删除对应绑定，保证"看不见 = 调不到"。
+   *
+   * 注意：只看非动态工具。插件动态工具走 buildDynamicToolsBootstrap，本就不含禁用项。
+   */
+  getDisabledToolNames(): string[] {
+    const names: string[] = [];
+    for (const tool of this.tools.values()) {
+      if ((tool as any).dynamic === true) continue;
+      try {
+        if (tool.isEnabled() === false) names.push(tool.name);
+      } catch (_) { /* 判定失败按启用处理，不误删 */ }
+    }
+    return names;
+  }
+
   getFormattedToolsForPrompt(): string {
     const descriptions = this.getDescriptions();
     if (descriptions.length === 0) return '暂无可用工具';

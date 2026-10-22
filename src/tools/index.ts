@@ -14,7 +14,9 @@ import { TodoWriteTool } from './impl/todo-write.js';
 import { BashTool } from './impl/bash.js';
 import { PwshTool } from './impl/pwsh.js';
 import { DeleteFileTool } from './impl/delete-file.js';
+import { DeleteDirTool } from './impl/delete-dir.js';
 import { WebFetchTool } from './impl/web-fetch.js';
+import { WebSearchTool } from './impl/web-search.js';
 import { MySQLTool } from './impl/mysql.js';
 import { OpenBrowserWindowTool } from './impl/open-browser-window.js';
 import { InjectJSTool } from './impl/inject-js.js';
@@ -41,7 +43,9 @@ registry.register(new TodoWriteTool());
 registry.register(new BashTool());
 registry.register(new PwshTool());
 registry.register(new DeleteFileTool());
+registry.register(new DeleteDirTool());
 registry.register(new WebFetchTool());
+registry.register(new WebSearchTool());
 registry.register(new MySQLTool());
 registry.register(new OpenBrowserWindowTool());
 registry.register(new InjectJSTool());
@@ -75,7 +79,9 @@ export {
   BashTool,
   PwshTool,
   DeleteFileTool,
+  DeleteDirTool,
   WebFetchTool,
+  WebSearchTool,
   // 便捷方法
   getAllTools,
   getToolDescriptions,

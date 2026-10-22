@@ -953,7 +953,7 @@ function setupAppMenu() {
 // ========== 子代理依赖注入 ==========
 injectSubagentDeps({ createWindow, profileManager });
 // 给 runAgent 工具注入执行器（tools 层不依赖 app）
-injectAgentRunner(async ({ agent, task, currentWindowId }: any) => {
+injectAgentRunner(async ({ agent, task, currentWindowId, timeoutMs }: any) => {
   const ctx = windowState.getWindowContext(currentWindowId);
   if (!ctx) throw new Error('父窗口上下文不存在');
   return runAgentImpl({
@@ -964,6 +964,8 @@ injectAgentRunner(async ({ agent, task, currentWindowId }: any) => {
     systemPrompt: agent.systemPrompt,
     tools: agent.tools,
     maxTurns: agent.maxTurns,
+    // 未传则交给 subagent.ts 的默认值（600000）
+    timeoutMs,
   });
 });
 // 给 runAgent 工具注入"是否子代理窗口"判定（防递归；tools 层不依赖 app）

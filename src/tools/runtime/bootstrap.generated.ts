@@ -5,6 +5,7 @@
 const TOOL_BOOTSTRAP = [
   "  globalThis.attachFile = async function (filePath) {\n      return await __call('attachFile', { filePath: filePath });\n  };",
   "  globalThis.bash = async function (command, options) {\n      options = options || {};\n      return await __call('bash', {\n          command: command,\n          description: options.description,\n          workdir: options.workdir || options.cwd,\n          timeoutMs: options.timeoutMs || options.timeout,\n      });\n  };",
+  "  globalThis.deleteDir = async function (dirPath, options) {\n      options = options || {};\n      return await __call('deleteDir', {\n          dirPath: dirPath,\n          options: { recursive: options.recursive === true, dryRun: options.dryRun === true },\n      });\n  };",
   "  globalThis.deleteFile = async function (filePath) {\n      return await __call('deleteFile', { filePath: filePath });\n  };",
   "  globalThis.edit = async function (filePath, oldString, newString, replaceAll, dryRun) {\n      return await __call('edit', {\n          filePath: filePath,\n          oldString: oldString,\n          newString: newString,\n          replaceAll: replaceAll === true,\n          dryRun: dryRun === true,\n      });\n  };",
   "  globalThis.glob = async function (pattern, searchPath) {\n      return await __call('glob', { pattern: pattern, path: searchPath });\n  };",
@@ -21,9 +22,10 @@ const TOOL_BOOTSTRAP = [
   "  globalThis.readLines = async function (filePath, options) {\n      options = options || {};\n      return await __call('readLines', {\n          filePath: filePath,\n          offset: options.offset,\n          limit: options.limit,\n      });\n  };",
   "  globalThis.read = async function (filePath, options) {\n      options = options || {};\n      return await __call('read', {\n          filePath: filePath,\n          offset: options.offset,\n          limit: options.limit,\n      });\n  };",
   "  globalThis.remember = async function (text, scope) {\n      return await __call('remember', { text: text, scope: scope });\n  };\n  globalThis.forgetMemory = async function (id) {\n      return await __call('forgetMemory', { id: id });\n  };\n  globalThis.listMemories = async function (options) {\n      options = options || {};\n      return await __call('listMemories', { scope: options.scope });\n  };",
-  "  globalThis.runAgent = async function (name, task) {\n      return await __call('runAgent', { name, task });\n  };",
+  "  globalThis.runAgent = async function (name, task, options) {\n      options = options || {};\n      return await __call('runAgent', { name: name, task: task, options: { timeoutMs: options.timeoutMs } });\n  };",
   "  globalThis.todoWrite = async function (todos) {\n      return await __call('todoWrite', { todos: todos });\n  };",
   "  globalThis.webFetch = async function (url) {\n      return await __call('webFetch', { url: url });\n  };",
+  "  globalThis.webSearch = async function (query, options) {\n      options = options || {};\n      return await __call('webSearch', { query: query, maxResults: options.maxResults });\n  };",
   "  globalThis.write = async function (filePath, content) {\n      return await __call('write', { filePath: filePath, content: content });\n  };",
 ].join('\n');
 

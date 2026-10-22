@@ -86,7 +86,7 @@ function guardPlanReadOnly(sessionId: any, toolName: string, phase: PlanPhase | 
  * 不拦就等于留了一条"草稿期借子代理偷跑写操作"的绕过通道。
  */
 const WRITE_TOOLS = new Set([
-  'write', 'edit', 'deleteFile',
+  'write', 'edit', 'deleteFile', 'deleteDir',
   'bash', 'pwsh', 'mysql',
   'injectJS', 'mcpCall', 'runAgent',
 ]);

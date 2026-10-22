@@ -337,7 +337,16 @@ class GrepToolNew extends Tool {
         return ToolResult.success('No matches found');
       }
 
-      return ToolResult.success(formatGrepOutput(retained));
+      // 元数据：截断时告诉模型「还有多少没看到」，避免误以为已看全。
+      const meta: any = {
+        totalCount: retained.seen,
+        returnedCount: retained.kept,
+        truncated: retained.truncated,
+      };
+      if (retained.truncated) {
+        meta.hint = 'grep(' + input.pattern + ') 命中 ' + retained.seen + ' 条，仅返回前 ' + retained.kept + ' 条。缩小 pattern/path/include 或对具体文件用 read。';
+      }
+      return ToolResult.successWithMeta(formatGrepOutput(retained), meta);
     } catch (err: any) {
       return ToolResult.error('Grep 搜索失败: ' + err.message);
     }

@@ -319,7 +319,24 @@ class ReadTool extends Tool {
       if (observedVersion) observe(params && params.sessionId, resolvedPath, observedVersion);
 
       console.log('[ReadTool] 已读取:', resolvedPath, 'offset=' + input.offset, 'limit=' + input.limit, 'totalLines=' + window.totalLines);
-      return ToolResult.success(formatReadOutput(filePath, { ...window, offset: input.offset }));
+
+      // 元数据：让 JsRunner 能在脚本末尾汇总「哪些 read 没读完」，模型据此决定续读。
+      // 文本 footer 已含同样信息，但 meta 是结构化的，不依赖模型解析中文/英文文案。
+      const endLine = window.lines.length > 0
+        ? window.lines[window.lines.length - 1].number
+        : Math.max(0, input.offset - 1);
+      const truncated = window.truncatedByBytes || endLine < window.totalLines;
+      const meta: any = {
+        totalCount: window.totalLines,
+        returnedCount: window.lines.length,
+        truncated,
+      };
+      if (truncated) {
+        meta.hint = 'read(' + filePath + ') 未读完：' + (window.truncatedByBytes
+          ? '输出按字节上限截断，从 offset=' + (endLine + 1) + ' 继续'
+          : '共 ' + window.totalLines + ' 行，仅返回 ' + input.offset + '-' + endLine + '，从 offset=' + (endLine + 1) + ' 继续');
+      }
+      return ToolResult.successWithMeta(formatReadOutput(filePath, { ...window, offset: input.offset }), meta);
     } catch (err: any) {
       return ToolResult.error('读取文件失败: ' + err.message);
     }

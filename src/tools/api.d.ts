@@ -175,6 +175,28 @@ interface FileDeleteResult {
  */
 declare function deleteFile(filePath: string): Promise<FileDeleteResult>;
 
+/** deleteDir 的选项 */
+interface DeleteDirOptions {
+  /** 删除非空目录时必须显式传 true（默认 false，非空目录会拒绝） */
+  recursive?: boolean;
+  /** 只列出将删除的内容，不实际删除 */
+  dryRun?: boolean;
+}
+/** deleteDir 的返回值 */
+interface DirDeleteResult {
+  message: string;
+  /** 被删除（或 dryRun 下将被删除）的目录绝对路径 */
+  path: string;
+  /** 实际删除的条目数（文件 + 子目录；dryRun 时为将要删除的数量） */
+  deleted: number;
+}
+
+/**
+ * 删除一个目录（不可恢复）。非空目录必须显式传 recursive: true。
+ * @throws 目录不存在、不是目录、目标受保护、非空但未传 recursive 时抛出异常
+ */
+declare function deleteDir(dirPath: string, options?: DeleteDirOptions): Promise<DirDeleteResult>;
+
 
 // ================= MySQL =================
 
@@ -216,6 +238,24 @@ declare function webFetch(url: string): Promise<string>;
  */
 declare function openBrowserWindow(url: string, options?: { id?: string; width?: number; height?: number }): Promise<any>;
 
+/** webSearch 的选项 */
+interface WebSearchOptions {
+  /** 最大返回条数，默认 8，上限 20 */
+  maxResults?: number;
+}
+/** webSearch 的单条结果 */
+interface WebSearchItem {
+  title: string;
+  url: string;
+  snippet: string;
+}
+
+/**
+ * 用查询词做网页搜索，返回标题、URL 与摘要（最多 8 条）。
+ * @throws query 为空、请求超时或失败时抛出异常
+ */
+declare function webSearch(query: string, options?: WebSearchOptions): Promise<string>;
+
 /**
  * 向指定窗口注入 JS 代码并返回执行结果（支持 async/await）。 如果需要可以使用js模拟点击等任何操作.
  */
@@ -225,10 +265,10 @@ declare function injectJS(windowId: string, code: string): Promise<any>;
 // ================= Agent =================
 
 /**
- * 把任务委派给一个子代理（独立上下文的 AI 对话）执行，返回子代理的最终结果摘要。适合大范围搜索/分析、独立子任务，避免污染当前上下文。
+ * 把任务委派给一个子代理（独立上下文的 AI 对话）执行，返回子代理的最终结果摘要。适合大范围搜索/分析、独立子任务，避免污染当前上下文。默认超时 10 分钟；可用 options.timeoutMs 调整。
  * @throws 代理不存在、父窗口上下文缺失或执行超时时抛出异常
  */
-declare function runAgent(name: string, task: string): Promise<string>;
+declare function runAgent(name: string, task: string, options?: { timeoutMs?: number }): Promise<string>;
 
 
 // ================= 附件上传 =================

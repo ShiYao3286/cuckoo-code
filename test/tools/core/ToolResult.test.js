@@ -40,3 +40,18 @@ test('ToolResult.success 传 null 数据', () => {
   assert.strictEqual(r.success, true);
   assert.strictEqual(r.data, null);
 });
+
+test('ToolResult.successWithMeta 带元数据且不污染 data', () => {
+  const r = ToolResult.successWithMeta('body', { truncated: true, totalCount: 100, returnedCount: 10, hint: 'go on' });
+  assert.strictEqual(r.success, true);
+  assert.strictEqual(r.data, 'body');
+  assert.strictEqual(r.error, null);
+  assert.strictEqual(r.meta.truncated, true);
+  assert.strictEqual(r.meta.totalCount, 100);
+  assert.strictEqual(r.meta.hint, 'go on');
+});
+
+test('ToolResult 无 meta 时 meta 为 null（兼容旧路径）', () => {
+  assert.strictEqual(ToolResult.success('x').meta, null);
+  assert.strictEqual(ToolResult.error('e').meta, null);
+});

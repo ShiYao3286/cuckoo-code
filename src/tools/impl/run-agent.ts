@@ -10,12 +10,13 @@ export const apiMetas: ToolApiMeta[] = [
     order: 14,
     category: 'Agent',
     name: 'runAgent',
-    doc: '把任务委派给一个子代理（独立上下文的 AI 对话）执行，返回子代理的最终结果摘要。适合大范围搜索/分析、独立子任务，避免污染当前上下文。',
-    params: 'name: string, task: string',
+    doc: '把任务委派给一个子代理（独立上下文的 AI 对话）执行，返回子代理的最终结果摘要。适合大范围搜索/分析、独立子任务，避免污染当前上下文。默认超时 10 分钟；可用 options.timeoutMs 调整。',
+    params: 'name: string, task: string, options?: { timeoutMs?: number }',
     returns: 'Promise<string>',
     paramDocs: {
       name: '子代理名称（见系统提示词「可用子代理」章节）',
       task: '要委派的任务描述',
+      options: '可选，{ timeoutMs?: number }，超时毫秒数（默认 600000 = 10 分钟）',
     },
     returnsDoc: '子代理的最终文本结果',
     throws: '代理不存在、父窗口上下文缺失或执行超时时抛出异常',
@@ -26,7 +27,7 @@ export const apiMetas: ToolApiMeta[] = [
  * 子代理执行器（由 app 层注入，避免 tools → app 的反向依赖）。
  * 接收 { agent, task, currentWindowId }，返回子代理最终文本。
  */
-export type AgentRunner = (args: { agent: any; task: string; currentWindowId: number }) => Promise<string>;
+export type AgentRunner = (args: { agent: any; task: string; currentWindowId: number; timeoutMs?: number }) => Promise<string>;
 
 /**
  * 判断某窗口是否子代理窗口（由 app 层注入，避免 tools → app 的反向依赖）。
@@ -57,11 +58,19 @@ class RunAgentTool extends Tool {
         properties: {
           name: { type: 'string', description: '子代理名称（见「可用子代理」章节）' },
           task: { type: 'string', description: '要委派的任务描述' },
+          options: {
+            type: 'object',
+            description: '可选，{ timeoutMs?: number }，超时毫秒数（默认 600000 = 10 分钟）',
+            properties: {
+              timeoutMs: { type: 'number', description: '超时毫秒数，默认 600000' },
+            },
+            additionalProperties: false,
+          },
         },
         required: ['name', 'task'],
         additionalProperties: false,
       },
-      'runAgent(name, task)'
+      'runAgent(name, task, options?)'
     );
   }
 
@@ -74,8 +83,19 @@ class RunAgentTool extends Tool {
   }
 
   async execute(params: any): Promise<ToolResult> {
-    const { name, task, projectDir, currentWindowId } = params;
+    const { name, task, projectDir, currentWindowId, options } = params;
     if (!name || !task) return ToolResult.error('name 和 task 必填');
+
+    // 超时：默认交给 app 层（600000），模型可显式收紧或放宽。
+    // 下限 10 秒防误传 0；上限 30 分钟防无限占用。
+    let timeoutMs: number | undefined;
+    if (options && options.timeoutMs !== undefined && options.timeoutMs !== null) {
+      const t = Number(options.timeoutMs);
+      if (!Number.isInteger(t) || t < 10000) {
+        return ToolResult.error('options.timeoutMs 必须是 >= 10000 的整数（毫秒）');
+      }
+      timeoutMs = Math.min(t, 30 * 60 * 1000);
+    }
     if (typeof currentWindowId !== 'number') return ToolResult.error('缺少窗口上下文');
     // 防递归：子代理窗口不能再调 runAgent（判定函数由 app 层注入）
     try {
@@ -92,7 +112,7 @@ class RunAgentTool extends Tool {
     if (!_runner) return ToolResult.error('子代理执行器未初始化');
 
     try {
-      const text = await _runner({ agent, task, currentWindowId });
+      const text = await _runner({ agent, task, currentWindowId, timeoutMs });
       return ToolResult.success(text);
     } catch (err: any) {
       return ToolResult.error('子代理执行失败: ' + err.message);
@@ -102,8 +122,9 @@ class RunAgentTool extends Tool {
 
 /** JsRunner 沙箱注入 */
 export function bootstrap(__call: any): void {
-  (globalThis as any).runAgent = async function (name: any, task: any) {
-    return await __call('runAgent', { name, task });
+  (globalThis as any).runAgent = async function (name: any, task: any, options: any) {
+    options = options || {};
+    return await __call('runAgent', { name: name, task: task, options: { timeoutMs: options.timeoutMs } });
   };
 }
 
