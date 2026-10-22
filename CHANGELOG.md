@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.8.37] - 2026-10-22
+
+### Added
+- **`webSearch` 工具**：DuckDuckGo Lite 搜索，返回标题/URL/摘要（默认 8 条，上限 20）。自动还原 DDG 跳转链接为真实地址、跳过广告块、同 URL 去重。配合既有 `webFetch` 形成「先搜索定位、再抓正文」的调研路径，避免盲猜 URL。
+- **`deleteDir` 工具**：删除目录，护栏比 `deleteFile` 更强——拒绝磁盘根 / 用户主目录 / 项目根目录 / Windows 系统目录 / 受保护路径；非空目录必须显式 `recursive: true`；不跟随符号链接；支持 `dryRun` 预览条目数。此前清目录只能拼 `rm -rf`，会被危险命令检测拦截。
+- **`runAgent` 支持 `options.timeoutMs`**：模型可控子代理超时（>=10000ms，上限 30 分钟），默认仍为 10 分钟。
+
+### Changed
+- **`ToolResult` 增加 `meta` 元数据**（`truncated` / `totalCount` / `returnedCount` / `hint`）与 `successWithMeta()`。`read` / `grep` 已填充：结果被截断时，`JsRunner` 在脚本末尾汇总成「哪次调用没看全 + 从哪个 offset 续读」的提示，模型不再需要自己解析 footer 文案。meta 只供宿主使用，沙箱拿到的仍是 `{success, data, error, code}`。
+- **启停一致性**：`ToolRegistry.getDisabledToolNames()` + 沙箱初始化后删除禁用工具的 `globalThis` 绑定。此前 `isEnabled() === false` 的工具只是从提示词消失，沙箱里仍可调用；现在做到「提示词看不见 = 沙箱调不到」。
+- `plan-mode` 的 `WRITE_TOOLS` 加入 `deleteDir`，草稿期同样被只读护栏拦截。
+
 ## [0.8.17] - 2026-10-20
 
 ### Fixed
